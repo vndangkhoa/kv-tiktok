@@ -4,12 +4,6 @@ import type { Video } from '../types';
 import { API_BASE_URL } from '../config';
 import { videoCache } from '../utils/videoCache';
 
-interface HeartParticle {
-    id: number;
-    x: number;
-    y: number;
-}
-
 interface VideoPlayerProps {
     video: Video;
     isActive: boolean;
@@ -31,7 +25,6 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     const [isSeeking, setIsSeeking] = useState(false);
     const [localMuted, setLocalMuted] = useState(true);
     const isMuted = externalMuted !== undefined ? externalMuted : localMuted;
-    const [hearts, setHearts] = useState<HeartParticle[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [cachedUrl, setCachedUrl] = useState<string | null>(null);
     const [codecError, setCodecError] = useState(false);
@@ -41,7 +34,6 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     const [isPaused, setIsPaused] = useState(false);
     const lastTapRef = useRef<number>(0);
 
-    // Zoom state
     const [zoomLevel, setZoomLevel] = useState(1);
     const [showZoomIndicator, setShowZoomIndicator] = useState(false);
     const initialPinchDistance = useRef<number | null>(null);
@@ -152,7 +144,6 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         }
     };
 
-    // Zoom functions
     const zoomIn = (e: React.MouseEvent) => {
         e.stopPropagation();
         setZoomLevel(prev => Math.min(prev + 0.25, 3));
@@ -171,7 +162,6 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         setShowZoomIndicator(true);
     };
 
-    // Hide zoom indicator after delay
     useEffect(() => {
         if (showZoomIndicator) {
             const timer = setTimeout(() => setShowZoomIndicator(false), 1500);
@@ -179,7 +169,6 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         }
     }, [showZoomIndicator]);
 
-    // Pinch to zoom handler
     const handleTouchMove = (e: React.TouchEvent<HTMLDivElement>) => {
         if (e.touches.length === 2) {
             e.preventDefault();
@@ -206,67 +195,19 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         initialPinchDistance.current = null;
     };
 
-    // Heart animation
     const tapTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
     const handleTouchStart = (e: React.TouchEvent<HTMLDivElement>) => {
         setShowControls(true);
-
-        const now = Date.now();
-        const touches = Array.from(e.changedTouches);
-
-        if (!containerRef.current) return;
-        const rect = containerRef.current.getBoundingClientRect();
-
-        const isMultiTouch = e.touches.length > 1;
-        let isRapid = false;
-
-        touches.forEach((touch, index) => {
-            const timeSinceLastTap = now - lastTapRef.current;
-
-            if (timeSinceLastTap < 400 || isMultiTouch || index > 0) {
-                isRapid = true;
-
-                const x = touch.clientX - rect.left;
-                const y = touch.clientY - rect.top;
-
-                const heartId = Date.now() + index + Math.random();
-                setHearts(prev => [...prev, { id: heartId, x, y }]);
-
-                setTimeout(() => {
-                    setHearts(prev => prev.filter(h => h.id !== heartId));
-                }, 1000);
-            }
-        });
-
-        if (isRapid) {
-            if (tapTimeoutRef.current) {
-                clearTimeout(tapTimeoutRef.current);
-                tapTimeoutRef.current = null;
-            }
-        }
-
-        lastTapRef.current = now;
+        lastTapRef.current = Date.now();
     };
 
     const handleVideoClick = (e: React.MouseEvent<HTMLDivElement>) => {
         const now = Date.now();
-        if (now - lastTapRef.current < 100) return;
-
-        if (tapTimeoutRef.current) {
-            clearTimeout(tapTimeoutRef.current);
-            tapTimeoutRef.current = null;
-
-            if (containerRef.current) {
-                const rect = containerRef.current.getBoundingClientRect();
-                const x = e.clientX - rect.left;
-                const y = e.clientY - rect.top;
-
-                const heartId = Date.now() + Math.random();
-                setHearts(prev => [...prev, { id: heartId, x, y }]);
-                setTimeout(() => {
-                    setHearts(prev => prev.filter(h => h.id !== heartId));
-                }, 1000);
+        if (now - lastTapRef.current < 250) {
+            if (tapTimeoutRef.current) {
+                clearTimeout(tapTimeoutRef.current);
+                tapTimeoutRef.current = null;
             }
         } else {
             tapTimeoutRef.current = setTimeout(() => {
@@ -274,7 +215,6 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                 tapTimeoutRef.current = null;
             }, 250);
         }
-
         lastTapRef.current = now;
     };
 
@@ -314,7 +254,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     return (
         <div
             ref={containerRef}
-            className="relative w-full max-w-[500px] mx-auto h-full bg-black overflow-hidden"
+            className="relative w-full h-full bg-black overflow-hidden flex items-center justify-center"
             onMouseEnter={() => setShowControls(true)}
             onMouseLeave={() => setShowControls(false)}
             onClick={handleVideoClick}
@@ -322,7 +262,6 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
             onTouchMove={handleTouchMove}
             onTouchEnd={handleTouchEnd}
         >
-            {/* Video Element */}
             <video
                 ref={videoRef}
                 src={videoSrc}
@@ -332,20 +271,23 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                 preload="auto"
                 muted={isMuted}
                 className="absolute inset-0 w-full h-full"
-                style={{ objectFit: 'cover', transform: `scale(${zoomLevel})`, transition: zoomLevel !== 1 ? 'none' : 'transform 0.2s ease-out' }}
+                style={{ objectFit: 'contain', transform: `scale(${zoomLevel})`, transition: zoomLevel !== 1 ? 'none' : 'transform 0.2s ease-out' }}
                 onCanPlay={() => setIsLoading(false)}
                 onWaiting={() => setIsLoading(true)}
                 onPlaying={() => setIsLoading(false)}
+                onLoadedMetadata={() => {
+                    if (videoRef.current) {
+                        setDuration(videoRef.current.duration);
+                    }
+                }}
             />
 
-            {/* Loading Spinner */}
             {isLoading && !codecError && (
                 <div className="absolute top-4 right-4 z-20">
                     <div className="w-8 h-8 border-2 border-white/30 border-t-white/80 rounded-full animate-spin" />
                 </div>
             )}
 
-            {/* Codec Error Fallback */}
             {codecError && (
                 <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/60 z-20 p-6 text-center">
                     <AlertCircle className="w-12 h-12 text-amber-400 mb-3" />
@@ -355,23 +297,6 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                 </div>
             )}
 
-            {/* Heart Animation */}
-            {hearts.map(heart => (
-                <div
-                    key={heart.id}
-                    className="absolute z-50 pointer-events-none animate-heart-float"
-                    style={{
-                        left: heart.x - 24,
-                        top: heart.y - 24,
-                    }}
-                >
-                    <svg className="w-16 h-16 text-white drop-shadow-xl filter drop-shadow-lg" viewBox="0 0 24 24" fill="currentColor">
-                        <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z" />
-                    </svg>
-                </div>
-            ))}
-
-            {/* Video Timeline/Progress Bar */}
             <div className="absolute bottom-0 left-0 right-0 z-30">
                 <div
                     ref={progressBarRef}
@@ -403,10 +328,8 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                 )}
             </div>
 
-            {/* Side Controls - centered at bottom of video, above author info */}
             <div className={`absolute bottom-20 left-0 right-0 flex justify-center z-40 transition-all duration-300 ${showControls ? 'opacity-100' : 'opacity-0'}`}>
                 <div className="flex flex-col items-center gap-2">
-                    {/* Zoom Indicator - above buttons */}
                     <div
                         className={`transition-all duration-200 ${showZoomIndicator ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-2 pointer-events-none'}`}
                     >
@@ -416,7 +339,6 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                     </div>
 
                     <div className="flex items-center gap-2 bg-black/40 backdrop-blur-xl rounded-full px-4 py-2 border border-white/10">
-                        {/* Zoom In */}
                         <button
                             onClick={zoomIn}
                             className="w-10 h-10 flex items-center justify-center text-white hover:bg-white/10 rounded-full transition-all"
@@ -425,7 +347,6 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                             <ZoomIn size={20} />
                         </button>
 
-                        {/* Zoom Out */}
                         <button
                             onClick={zoomOut}
                             className="w-10 h-10 flex items-center justify-center text-white hover:bg-white/10 rounded-full transition-all"
@@ -434,7 +355,6 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                             <ZoomOut size={20} />
                         </button>
 
-                        {/* Reset Zoom (only show when zoomed) */}
                         {zoomLevel !== 1 && (
                             <button
                                 onClick={resetZoom}
@@ -447,7 +367,6 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
 
                         <div className="w-px h-6 bg-white/20 mx-1" />
 
-                        {/* Download Button */}
                         <a
                             href={downloadUrl}
                             download
@@ -458,9 +377,8 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                             <Download size={20} />
                         </a>
 
-                        {/* Mute Toggle */}
                         <button
-                            onClick={toggleMute}
+                            onClick={(e) => { e.stopPropagation(); toggleMute(e); }}
                             className="w-10 h-10 flex items-center justify-center text-white hover:bg-white/10 rounded-full transition-all"
                             title={isMuted ? 'Unmute' : 'Mute'}
                         >
@@ -470,7 +388,6 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                 </div>
             </div>
 
-            {/* Author Info - below controls */}
             <div className={`absolute bottom-6 left-4 right-4 z-10 transition-opacity duration-300 ${showControls ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
                 <div className="flex items-center gap-2">
                     <span className="text-white font-semibold text-sm truncate">@{video.author}</span>

@@ -7,17 +7,18 @@
 - **For You Feed** — Video feed from popular TikTok creators
 - **Search** — Search videos and users
 - **Following** — Track your favorite creators
-- **Liked Videos** — Save favorites to a persistent Liked tab
 - **Download** — Download videos directly
 - **Autoplay** — Muted autoplay with tap-to-unmute
 - **Mobile-friendly** — Responsive design for any screen
 - **Docker-ready** — Single container, easy deployment on Synology NAS
+- **Object-fit contain** — Videos preserve original aspect ratio with letterboxing
 
 ## Architecture
 
 - **Backend**: Python FastAPI with Playwright for TikTok interaction
-- **Frontend**: React + Vite
+- **Frontend**: React + Vite (SPA)
 - **Platform**: `linux/amd64` (compatible with Synology NAS x86/x64 models)
+- **Video source**: CDN-first with fallback proxy, forces full download for playback
 
 ## Prerequisites
 

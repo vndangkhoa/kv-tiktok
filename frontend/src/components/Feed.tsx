@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { VideoPlayer } from './VideoPlayer';
 import { SkeletonFeed } from './SkeletonFeed';
-import { Sidebar } from './Sidebar';
 import type { Video } from '../types';
 import axios from 'axios';
 import { API_BASE_URL } from '../config';
@@ -9,13 +8,10 @@ import { videoPrefetcher } from '../utils/videoPrefetch';
 import { feedLoader } from '../utils/feedLoader';
 
 type ViewState = 'login' | 'loading' | 'feed';
-type TabType = 'foryou' | 'likes';
 
 export const Feed: React.FC = () => {
     const [viewState, setViewState] = useState<ViewState>('login');
-    const [activeTab, setActiveTab] = useState<TabType>('foryou');
     const [videos, setVideos] = useState<Video[]>([]);
-    const [likesVideos, setLikesVideos] = useState<Video[]>([]);
     const [currentIndex, setCurrentIndex] = useState(0);
     const [jsonInput, setJsonInput] = useState('');
     const containerRef = useRef<HTMLDivElement>(null);
@@ -25,8 +21,6 @@ export const Feed: React.FC = () => {
 
     const [isFetching, setIsFetching] = useState(false);
     const [hasMore, setHasMore] = useState(true);
-    const likesContainerRef = useRef<HTMLDivElement>(null);
-    const [likesCurrentIndex, setLikesCurrentIndex] = useState(0);
 
     useEffect(() => {
         checkAuthStatus();
@@ -35,29 +29,16 @@ export const Feed: React.FC = () => {
     useEffect(() => {
         const prefetch = async () => {
             await videoPrefetcher.init();
-            const currentVideos = activeTab === 'foryou' ? videos : likesVideos;
-            const currentIdx = activeTab === 'foryou' ? currentIndex : likesCurrentIndex;
-            videoPrefetcher.prefetchNext(currentVideos, currentIdx);
+            videoPrefetcher.prefetchNext(videos, currentIndex);
         };
         prefetch();
-    }, [currentIndex, likesCurrentIndex, videos, likesVideos, activeTab]);
-
-    useEffect(() => {
-        const ref = activeTab === 'foryou' ? containerRef : likesContainerRef;
-        if (ref.current) {
-            const targetScroll = (activeTab === 'foryou' ? currentIndex : likesCurrentIndex) * ref.current.clientHeight;
-            if (Math.abs(ref.current.scrollTop - targetScroll) > 50) {
-                ref.current.scrollTo({ top: targetScroll, behavior: 'auto' });
-            }
-        }
-    }, [videos, likesVideos, activeTab]);
+    }, [currentIndex, videos]);
 
     const checkAuthStatus = async () => {
         try {
             const res = await axios.get(`${API_BASE_URL}/auth/status`);
             if (res.data.authenticated) {
                 loadFeed();
-                loadLikesFeed();
             }
         } catch (err) {
             console.log('Not authenticated');
@@ -71,7 +52,6 @@ export const Feed: React.FC = () => {
             const res = await axios.post(`${API_BASE_URL}/auth/browser-login`);
             if (res.data.status === 'success') {
                 loadFeed();
-                loadLikesFeed();
             } else {
                 setError(res.data.message || 'Login failed');
                 setViewState('login');
@@ -93,7 +73,6 @@ export const Feed: React.FC = () => {
             const credentials = JSON.parse(jsonInput);
             await axios.post(`${API_BASE_URL}/auth/credentials`, { credentials });
             loadFeed();
-            loadLikesFeed();
         } catch (err: any) {
             setError(err.message || 'Invalid JSON format');
             setViewState('login');
@@ -131,22 +110,6 @@ export const Feed: React.FC = () => {
         }
     };
 
-    const loadLikesFeed = async () => {
-        try {
-            const res = await axios.get(`${API_BASE_URL}/following`);
-            const followingList = res.data || [];
-            if (followingList.length > 0) {
-                const username = followingList[0];
-                const videosRes = await axios.get(`${API_BASE_URL}/user/liked?username=${username}&limit=30`);
-                if (videosRes.data.videos) {
-                    setLikesVideos(videosRes.data.videos);
-                }
-            }
-        } catch (err) {
-            console.error('Failed to load likes:', err);
-        }
-    };
-
     const handleScroll = () => {
         if (containerRef.current) {
             const { scrollTop, clientHeight } = containerRef.current;
@@ -157,16 +120,6 @@ export const Feed: React.FC = () => {
             const watchedPercent = videos.length > 0 ? (index + 1) / videos.length : 0;
             if (watchedPercent >= 0.6 && hasMore && !isFetching && videos.length > 0) {
                 loadMoreVideos();
-            }
-        }
-    };
-
-    const handleLikesScroll = () => {
-        if (likesContainerRef.current) {
-            const { scrollTop, clientHeight } = likesContainerRef.current;
-            const index = Math.round(scrollTop / clientHeight);
-            if (index !== likesCurrentIndex) {
-                setLikesCurrentIndex(index);
             }
         }
     };
@@ -192,7 +145,6 @@ export const Feed: React.FC = () => {
     const handleLogout = async () => {
         await axios.post(`${API_BASE_URL}/auth/logout`);
         setVideos([]);
-        setLikesVideos([]);
         setViewState('login');
     };
 
@@ -312,113 +264,56 @@ export const Feed: React.FC = () => {
     }
 
     return (
-        <div className="flex w-full h-screen bg-[#0f0f15] text-white overflow-hidden">
-            <Sidebar
-                activeTab={activeTab}
-                onTabChange={(tab) => {
-                    setActiveTab(tab);
-                    if (tab === 'foryou' && videos.length === 0) loadFeed();
-                    if (tab === 'likes' && likesVideos.length === 0) loadLikesFeed();
-                }}
-            />
+        <div className="w-full h-screen bg-black overflow-hidden">
+            <button
+                onClick={handleLogout}
+                className="absolute top-6 right-6 z-50 w-10 h-10 flex items-center justify-center bg-black/20 hover:bg-black/40 backdrop-blur-md rounded-full text-white/70 hover:text-white transition-all duration-300"
+                title="Logout"
+            >
+                <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4" />
+                    <polyline points="16,17 21,12 16,7" />
+                    <line x1="21" y1="12" x2="9" y2="12" />
+                </svg>
+            </button>
 
-            <div className="flex-1 relative w-full h-full overflow-hidden">
-                <button
-                    onClick={handleLogout}
-                    className="absolute top-6 right-6 z-50 w-10 h-10 flex items-center justify-center bg-black/20 hover:bg-black/40 backdrop-blur-md rounded-full text-white/70 hover:text-white transition-all duration-300"
-                    title="Logout"
-                >
-                    <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                        <path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4" />
-                        <polyline points="16,17 21,12 16,7" />
-                        <line x1="21" y1="12" x2="9" y2="12" />
-                    </svg>
-                </button>
+            <div className="absolute bottom-6 right-4 z-40 px-3 py-1.5 bg-black/60 backdrop-blur-sm rounded-full border border-white/10 transition-all">
+                <span className="text-xs text-white/60 font-medium">
+                    {isFetching ? (
+                        <span className="text-white/70">Loading {currentIndex + 1}/{videos.length}...</span>
+                    ) : (
+                        <>
+                            {currentIndex + 1} / {videos.length}
+                            {hasMore && <span className="text-white/70 ml-1">+</span>}
+                        </>
+                    )}
+                </span>
+            </div>
 
-                <div className={`absolute inset-0 w-full h-full transition-all duration-300 ease-out ${activeTab === 'foryou' ? 'translate-x-0 opacity-100' : 'translate-x-full opacity-0 pointer-events-none'}`}>
-                    <div className={`absolute bottom-6 right-4 z-40 px-3 py-1.5 bg-black/60 backdrop-blur-sm rounded-full border border-white/10 transition-all ${isFetching ? 'animate-pulse border-gray-400/50' : ''}`}>
-                        <span className="text-xs text-white/60 font-medium">
-                            {isFetching ? (
-                                <span className="text-white/70">Loading {currentIndex + 1}/{videos.length}...</span>
-                            ) : (
-                                <>
-                                    {currentIndex + 1} / {videos.length}
-                                    {hasMore && <span className="text-white/70 ml-1">+</span>}
-                                </>
-                            )}
-                        </span>
-                    </div>
-
-                    <div
-                        ref={containerRef}
-                        onScroll={handleScroll}
-                        className="w-full h-full overflow-y-auto snap-y snap-mandatory scrollbar-hide"
-                        style={{ scrollbarWidth: 'none' }}
-                    >
-                        {videos.map((video, index) => (
-                            <div key={video.id} className="w-full h-screen-safe snap-start snap-always bg-black flex justify-center">
-                                {index === currentIndex ? (
-                                    <div className="w-full max-w-[500px]">
-                                    <VideoPlayer
-                                        video={video}
-                                        isActive={true}
-                                        isMuted={isMuted}
-                                        onMuteToggle={() => setIsMuted(prev => !prev)}
-                                    />
-                                    </div>
-                                ) : (
-                                    <div className="w-full max-w-[500px] h-full bg-black flex items-center justify-center relative overflow-hidden">
-                                        <div className="w-10 h-10 border-4 border-white/10 border-t-white/30 rounded-full animate-spin" />
-                                    </div>
-                                )}
+            <div
+                ref={containerRef}
+                onScroll={handleScroll}
+                className="w-full h-full overflow-y-auto snap-y snap-mandatory scrollbar-hide"
+                style={{ scrollbarWidth: 'none' }}
+            >
+                {videos.map((video, index) => (
+                    <div key={video.id} className="w-full h-full snap-start snap-always bg-black flex justify-center items-center">
+                        {index === currentIndex ? (
+                            <div className="w-full h-full">
+                            <VideoPlayer
+                                video={video}
+                                isActive={true}
+                                isMuted={isMuted}
+                                onMuteToggle={() => setIsMuted(prev => !prev)}
+                            />
                             </div>
-                        ))}
-                    </div>
-                </div>
-
-                <div className={`absolute inset-0 w-full h-full transition-all duration-300 ease-out ${activeTab === 'likes' ? 'translate-x-0 opacity-100' : '-translate-x-full opacity-0 pointer-events-none'}`}>
-                    <div className="absolute bottom-6 right-4 z-40 px-3 py-1.5 bg-black/60 backdrop-blur-sm rounded-full border border-white/10">
-                        <span className="text-xs text-white/60 font-medium">
-                            {likesCurrentIndex + 1} / {likesVideos.length}
-                        </span>
-                    </div>
-
-                    <div
-                        ref={likesContainerRef}
-                        onScroll={handleLikesScroll}
-                        className="w-full h-full overflow-y-auto snap-y snap-mandatory scrollbar-hide"
-                        style={{ scrollbarWidth: 'none' }}
-                    >
-                        {likesVideos.length > 0 ? (
-                            likesVideos.map((video, index) => (
-                                <div key={video.id} className="w-full h-screen-safe snap-start snap-always bg-black flex justify-center">
-                                    {index === likesCurrentIndex ? (
-                                        <div className="w-full max-w-[500px]">
-                                        <VideoPlayer
-                                            video={video}
-                                            isActive={true}
-                                            isMuted={isMuted}
-                                            onMuteToggle={() => setIsMuted(prev => !prev)}
-                                        />
-                                        </div>
-                                    ) : (
-                                        <div className="w-full max-w-[500px] h-full bg-black flex items-center justify-center relative overflow-hidden">
-                                            <div className="w-10 h-10 border-4 border-white/10 border-t-white/30 rounded-full animate-spin" />
-                                        </div>
-                                    )}
-                                </div>
-                            ))
                         ) : (
-                            <div className="w-full h-full flex flex-col items-center justify-center bg-black">
-                                <svg className="w-16 h-16 text-white/20 mb-4" viewBox="0 0 24 24" fill="currentColor">
-                                    <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z" />
-                                </svg>
-                                <p className="text-white/40 text-sm">No liked videos yet</p>
-                                <p className="text-white/20 text-xs mt-2">Double-tap videos to like them</p>
+                            <div className="w-full h-full bg-black flex items-center justify-center relative overflow-hidden">
+                                <div className="w-10 h-10 border-4 border-white/10 border-t-white/30 rounded-full animate-spin" />
                             </div>
                         )}
                     </div>
-                </div>
+                ))}
             </div>
         </div>
     );
