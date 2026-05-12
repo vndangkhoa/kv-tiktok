@@ -23,7 +23,9 @@ import { Feed } from './components/Feed';
 const Dashboard = () => {
   return (
     <div className="h-screen bg-black">
-      <Feed />
+      <Routes>
+        <Route path="/" element={<Feed />} />
+      </Routes>
     </div>
   )
 }
@@ -44,7 +46,7 @@ function App() {
           <Route path="/login" element={<Login />} />
           <Route path="/admin" element={<Admin />} />
           <Route
-            path="/"
+            path="/*"
             element={
               <ProtectedRoute>
                 <Dashboard />

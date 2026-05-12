@@ -281,9 +281,9 @@ async def proxy_video(
         if not os.path.exists(video_path):
             raise Exception("Video file not created")
         
-        print(f"Downloaded codec: {video_codec} (no transcoding - client will decode)")
+        print(f"Downloaded codec: {video_codec}")
         
-        # Save to cache directly - NO TRANSCODING
+        # Save to cache directly - client-side player handles all formats
         cached_path = save_to_cache(url, video_path)
         stats = get_cache_stats()
         print(f"CACHED: {url[:50]}... ({stats['files']} files, {stats['size_mb']}MB total)")

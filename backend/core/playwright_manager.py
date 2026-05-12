@@ -17,9 +17,14 @@ from playwright.async_api import async_playwright, Response, Browser, BrowserCon
 try:
     from playwright_stealth import stealth_async
 except ImportError:
-    print("WARNING: playwright_stealth not found, disabling stealth mode.")
-    async def stealth_async(page):
-        pass
+    try:
+        from playwright_stealth import Stealth
+        async def stealth_async(page):
+            await Stealth().apply_stealth_async(page)
+    except ImportError:
+        print("WARNING: playwright_stealth not found, disabling stealth mode.")
+        async def stealth_async(page):
+            pass
 
 
 COOKIES_FILE = "cookies.json"
@@ -43,10 +48,18 @@ class PlaywrightManager:
         "--start-maximized"
     ]
     
-    DEFAULT_USER_AGENT = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+    DEFAULT_USER_AGENT = "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1"
     
     # Use installed Chrome instead of Playwright's Chromium (avoids slow download)
-    CHROME_PATH = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
+    import platform
+    import os
+    
+    # Check if running on macOS
+    if platform.system() == "Darwin" and os.path.exists("/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"):
+        CHROME_PATH = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
+    else:
+        # On Linux/Docker, use Playwright's bundled Chromium (None lets Playwright decide)
+        CHROME_PATH = None
     
     # VNC login state (class-level to persist across requests)
     _vnc_playwright = None
@@ -515,8 +528,26 @@ class PlaywrightManager:
                 try:
                     data = await response.json()
                     
-                    # TikTok returns videos in "itemList" or "aweme_list"
-                    items = data.get("itemList", []) or data.get("aweme_list", [])
+                    # TikTok returns videos in various nested formats
+                    items = []
+                    
+                    # Try direct itemList first
+                    if data.get("itemList") and isinstance(data["itemList"], list):
+                        items = data["itemList"]
+                    elif data.get("aweme_list") and isinstance(data["aweme_list"], list):
+                        items = data["aweme_list"]
+                    # Try nested data structure
+                    elif data.get("data"):
+                        nested_data = data["data"]
+                        if isinstance(nested_data, list):
+                            for item in nested_data:
+                                if isinstance(item, dict):
+                                    if "item" in item and isinstance(item["item"], dict):
+                                        items.append(item["item"])
+                                    else:
+                                        items.append(item)
+                        elif isinstance(nested_data, dict):
+                            items = nested_data.get("itemList", []) or nested_data.get("aweme_list", [])
                     
                     for item in items:
                         video_data = PlaywrightManager._extract_video_data(item)
@@ -789,13 +820,78 @@ class PlaywrightManager:
             
             url = response.url
             
-            # Look for search results API
-            if "search" in url and ("item_list" in url or "video" in url or "general" in url):
+            # Log ALL API responses to find the right one
+            if "/api/" in url and "tiktok.com" in url:
                 try:
+                    content_type = response.headers.get("content-type", "")
+                    if "json" in content_type.lower():
+                        data = await response.json()
+                        log_entry = {"url": url, "keys": list(data.keys()) if isinstance(data, dict) else "not dict"}
+                        with open("all_responses.jsonl", "a", encoding="utf-8") as f:
+                            f.write(json.dumps(log_entry) + "\n")
+                except:
+                    pass
+
+            # Look for search results API - stricter
+            is_search_api = "/api/search/" in url and ("item" in url or "general" in url or "full" in url)
+            
+            if is_search_api:
+                try:
+                    content_type = response.headers.get("content-type", "")
+                    if "json" not in content_type.lower():
+                        return
+                        
                     data = await response.json()
                     
-                    # Try different response formats
-                    items = data.get("itemList", []) or data.get("data", []) or data.get("item_list", [])
+                    # Debug: print the actual structure
+                    if data:
+                        keys = list(data.keys()) if isinstance(data, dict) else "not a dict"
+                        print(f"DEBUG: Search API response keys: {keys} from {url}")
+                        
+                        # DUMP FOR DEBUGGING
+                        try:
+                            # Append to file or overwrite with list? Overwrite with wrapper for now
+                            debug_data = {"url": url, "response": data}
+                            with open("debug_search_response.json", "w", encoding="utf-8") as f:
+                                json.dump(debug_data, f, indent=2)
+                            print("DEBUG: Dumped search response to debug_search_response.json")
+                        except Exception as e:
+                            print(f"DEBUG: Failed to dump response: {e}")
+                    
+                    # Try different response formats - TikTok nests data in various ways
+                    items = []
+                    
+                    # First try direct itemList
+                    if data.get("itemList") and isinstance(data["itemList"], list):
+                        items = data["itemList"]
+                    # Try data field 
+                    elif data.get("data"):
+                        nested_data = data["data"]
+                        if isinstance(nested_data, list):
+                            # data is a list of items directly
+                            for item in nested_data:
+                                if isinstance(item, dict):
+                                    # Check if item has an "item" key (video wrapped)
+                                    if "item" in item and isinstance(item["item"], dict):
+                                        items.append(item["item"])
+                                    # Check for aweme/video wrapper
+                                    elif "aweme" in item and isinstance(item["aweme"], dict):
+                                        items.append(item["aweme"])
+                                    else:
+                                        items.append(item)
+                        elif isinstance(nested_data, dict):
+                            # data is an object with items inside
+                            items = nested_data.get("itemList", []) or nested_data.get("item_list", []) or \
+                                   nested_data.get("videos", []) or nested_data.get("aweme_list", [])
+                    # Try item_list directly
+                    elif data.get("item_list"):
+                        items = data["item_list"]
+                    # Try aweme_list (mobile API format)
+                    elif data.get("aweme_list"):
+                        items = data["aweme_list"]
+                    
+                    if items:
+                        print(f"DEBUG: Found {len(items)} items, first item keys: {list(items[0].keys()) if items and isinstance(items[0], dict) else 'N/A'}")
                     
                     for item in items:
                         # If we have enough for this specific batch, we don't need more
@@ -814,10 +910,8 @@ class PlaywrightManager:
                     print(f"DEBUG: Error parsing search API response: {e}")
         
         async with async_playwright() as p:
-            browser = await p.chromium.launch(
+            browser = await p.firefox.launch(
                 headless=True,
-                executable_path=PlaywrightManager.CHROME_PATH,
-                args=PlaywrightManager.BROWSER_ARGS
             )
             
             context = await browser.new_context(user_agent=user_agent)
@@ -828,8 +922,9 @@ class PlaywrightManager:
             page.on("response", handle_response)
             
             try:
-                # Navigate to TikTok search page
-                search_url = f"https://www.tiktok.com/search/video?q={quote(query)}"
+
+                # Navigate to TikTok search page - try standard search
+                search_url = f"https://www.tiktok.com/search?q={quote(query)}"
                 try:
                     await page.goto(search_url, wait_until="domcontentloaded", timeout=15000)
                 except:
@@ -861,6 +956,18 @@ class PlaywrightManager:
             except Exception as e:
                 print(f"DEBUG: Error during search: {e}")
             
+            try:
+                await page.screenshot(path="debug_search_page.png")
+                print("DEBUG: Saved screenshot to debug_search_page.png")
+                
+                # Dump HTML
+                html_content = await page.content()
+                with open("debug_search_page.html", "w", encoding="utf-8") as f:
+                    f.write(html_content)
+                print("DEBUG: Saved HTML to debug_search_page.html")
+            except:
+                pass
+
             await browser.close()
         
         print(f"DEBUG: Total captured search videos in this batch: {len(captured_videos)}")

@@ -15,6 +15,30 @@
         height: 100vh;
         height: 100dvh;
     }
+    
+    body {
+        @apply bg-[#0f0f15] text-white antialiased;
+        color-scheme: dark;
+        font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    }
+}
+
+@layer components {
+    .glass-panel {
+        @apply bg-white/5 backdrop-blur-xl border border-white/10;
+    }
+    
+    .glass-panel-hover {
+        @apply hover:bg-white/10 transition-colors duration-200;
+    }
+
+    .btn-primary {
+        @apply bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 text-white font-medium px-4 py-2 rounded-xl transition-all active:scale-95 shadow-lg shadow-indigo-500/20;
+    }
+    
+    .btn-ghost {
+        @apply hover:bg-white/10 text-gray-300 hover:text-white px-4 py-2 rounded-xl transition-all active:scale-95;
+    }
 }
 
 @layer utilities {
@@ -33,33 +57,17 @@
         display: none;
         /* Chrome, Safari and Opera */
     }
-}
-
-@layer utilities {
-    .scrollbar-hide::-webkit-scrollbar {
-        display: none;
-    }
-
-    .scrollbar-hide {
-        -ms-overflow-style: none;
-        scrollbar-width: none;
+    
+    .text-shadow {
+        text-shadow: 0 2px 4px rgba(0,0,0,0.5);
     }
 }
 
+/* Animations */
 @keyframes shake {
-
-    0%,
-    100% {
-        transform: translateX(0);
-    }
-
-    25% {
-        transform: translateX(-4px);
-    }
-
-    75% {
-        transform: translateX(4px);
-    }
+    0%, 100% { transform: translateX(0); }
+    25% { transform: translateX(-4px); }
+    75% { transform: translateX(4px); }
 }
 
 .animate-shake {
@@ -67,34 +75,25 @@
 }
 
 @keyframes heart-float {
-    0% {
-        opacity: 1;
-        transform: scale(0) rotate(-15deg);
-    }
-
-    25% {
-        opacity: 1;
-        transform: scale(1.2) rotate(10deg);
-    }
-
-    50% {
-        opacity: 0.8;
-        transform: scale(1) translateY(-30px) rotate(-5deg);
-    }
-
-    100% {
-        opacity: 0;
-        transform: scale(0.6) translateY(-80px) rotate(15deg);
-    }
+    0% { opacity: 1; transform: scale(0) rotate(-15deg); }
+    25% { opacity: 1; transform: scale(1.2) rotate(10deg); }
+    50% { opacity: 0.8; transform: scale(1) translateY(-30px) rotate(-5deg); }
+    100% { opacity: 0; transform: scale(0.6) translateY(-80px) rotate(15deg); }
 }
 
 .animate-heart-float {
     animation: heart-float 1s ease-out forwards;
 }
 
-body {
-    @apply bg-black antialiased;
-    color-scheme: dark;
+@keyframes shimmer {
+    0% { background-position: -200% 0; }
+    100% { background-position: 200% 0; }
+}
+
+.skeleton-pulse {
+    background: linear-gradient(90deg, rgba(255,255,255,0.03) 25%, rgba(255,255,255,0.08) 50%, rgba(255,255,255,0.03) 75%);
+    background-size: 200% 100%;
+    animation: shimmer 1.5s infinite;
 }
 
 .artplayer-app {

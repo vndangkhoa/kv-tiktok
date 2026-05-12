@@ -85,7 +85,8 @@ class VideoPrefetcher {
       return;
     }
 
-    const API_BASE_URL = 'http://localhost:8002/api'; // Hardcoded or imported from config
+    const API_BASE_URL_CONFIG = (await import('../config')).API_BASE_URL;
+    const API_BASE_URL = API_BASE_URL_CONFIG || 'http://localhost:8002/api'; // Fallback if import fails
     const fullProxyUrl = `${API_BASE_URL}/feed/proxy?url=${encodeURIComponent(video.url)}`;
     // Use thin proxy if available for better performance
     const thinProxyUrl = video.cdn_url ? `${API_BASE_URL}/feed/thin-proxy?cdn_url=${encodeURIComponent(video.cdn_url)}` : null;

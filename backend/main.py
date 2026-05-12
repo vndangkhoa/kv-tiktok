@@ -1,3 +1,11 @@
+import sys
+import asyncio
+
+# CRITICAL: Set Windows event loop policy BEFORE any other imports
+# Playwright requires ProactorEventLoop for subprocess support on Windows
+if sys.platform == "win32":
+    asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -5,12 +13,7 @@ from fastapi.responses import FileResponse
 from contextlib import asynccontextmanager
 from pathlib import Path
 from api.routes import auth, feed, download, following, config, user
-import sys
-import asyncio
 
-# Force Proactor on Windows for Playwright
-if sys.platform == "win32":
-    asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):

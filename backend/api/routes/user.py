@@ -7,8 +7,10 @@ from pydantic import BaseModel
 from typing import Optional, List
 import httpx
 import asyncio
+import time
 
 from core.playwright_manager import PlaywrightManager
+from core.tiktok_api_service import TikTokAPIService
 
 router = APIRouter()
 
@@ -112,7 +114,7 @@ async def get_user_videos(
 ):
     """
     Fetch videos from a TikTok user's profile.
-    Uses Playwright to crawl the user's page for reliable results.
+    Uses direct API calls for speed (~100-500ms), with Playwright fallback.
     """
     username = username.replace("@", "")
     
@@ -123,10 +125,25 @@ async def get_user_videos(
         raise HTTPException(status_code=401, detail="Not authenticated")
     
     print(f"Fetching videos for @{username}...")
+    start_time = time.time()
     
+    # Try fast API first
+    try:
+        videos = await TikTokAPIService.get_user_videos(username, cookies, user_agent, limit)
+        if videos:
+            duration = time.time() - start_time
+            print(f"[API] Got {len(videos)} videos in {duration:.2f}s")
+            return {"username": username, "videos": videos, "count": len(videos), "source": "api", "duration_ms": int(duration * 1000)}
+    except Exception as e:
+        print(f"[API] Failed for {username}: {e}")
+    
+    # Fallback to Playwright if API fails or returns empty
+    print(f"[Fallback] Using Playwright for @{username}...")
     try:
         videos = await PlaywrightManager.fetch_user_videos(username, cookies, user_agent, limit)
-        return {"username": username, "videos": videos, "count": len(videos)}
+        duration = time.time() - start_time
+        print(f"[Playwright] Got {len(videos)} videos in {duration:.2f}s")
+        return {"username": username, "videos": videos, "count": len(videos), "source": "playwright", "duration_ms": int(duration * 1000)}
     except Exception as e:
         print(f"Error fetching videos for {username}: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -140,7 +157,7 @@ async def search_videos(
 ):
     """
     Search for videos by keyword or hashtag.
-    Uses Playwright to crawl TikTok search results for reliable data.
+    Uses direct API calls for speed (~200-800ms), with Playwright fallback.
     """
     # Load stored credentials
     cookies, user_agent = PlaywrightManager.load_stored_credentials()
@@ -149,10 +166,25 @@ async def search_videos(
         raise HTTPException(status_code=401, detail="Not authenticated")
     
     print(f"Searching for: {query} (limit={limit}, cursor={cursor})...")
+    start_time = time.time()
     
+    # Try fast API first
+    try:
+        videos = await TikTokAPIService.search_videos(query, cookies, user_agent, limit, cursor)
+        if videos:
+            duration = time.time() - start_time
+            print(f"[API] Found {len(videos)} videos in {duration:.2f}s")
+            return {"query": query, "videos": videos, "count": len(videos), "cursor": cursor + len(videos), "source": "api", "duration_ms": int(duration * 1000)}
+    except Exception as e:
+        print(f"[API] Search failed for {query}: {e}")
+    
+    # Fallback to Playwright if API fails or returns empty
+    print(f"[Fallback] Using Playwright for search '{query}'...")
     try:
         videos = await PlaywrightManager.search_videos(query, cookies, user_agent, limit, cursor)
-        return {"query": query, "videos": videos, "count": len(videos), "cursor": cursor + len(videos)}
+        duration = time.time() - start_time
+        print(f"[Playwright] Found {len(videos)} videos in {duration:.2f}s")
+        return {"query": query, "videos": videos, "count": len(videos), "cursor": cursor + len(videos), "source": "playwright", "duration_ms": int(duration * 1000)}
     except Exception as e:
         print(f"Error searching for {query}: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -178,7 +210,6 @@ async def get_suggested_accounts(
     
     # Check cache
     if _suggested_cache["accounts"] and (time.time() - _suggested_cache["updated_at"]) < CACHE_TTL:
-        print("Returning cached suggested accounts")
         return {"accounts": _suggested_cache["accounts"][:limit], "cached": True}
     
     # Load stored credentials
@@ -198,10 +229,8 @@ async def get_suggested_accounts(
             _suggested_cache["updated_at"] = time.time()
             return {"accounts": accounts[:limit], "cached": False}
         else:
-            # Fallback: fetch actual profile data with avatars for static list
-            print("Dynamic fetch failed, fetching profile data for static accounts...")
-            fallback_list = get_fallback_accounts()[:min(limit, 20)]  # Limit to 20 for speed
-            return await fetch_profiles_with_avatars(fallback_list, cookies, user_agent)
+            # Just return static accounts directly without API calls - TikTok API is unreliable
+            return {"accounts": get_fallback_accounts()[:limit], "cached": False, "fallback": True}
             
     except Exception as e:
         print(f"Error fetching suggested accounts: {e}")

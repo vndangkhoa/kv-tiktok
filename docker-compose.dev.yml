@@ -1,0 +1,24 @@
+# PureStream Development Docker Compose
+# Uses Dockerfile.dev which COPIES files to avoid Synology Drive filesystem issues
+
+services:
+  backend:
+    container_name: purestream_dev
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    ports:
+      - "8002:8002"
+    volumes:
+      # Only mount data directories (not code)
+      - purestream_cache:/app/cache
+      - purestream_session:/app/session
+    shm_size: '2gb'
+
+volumes:
+  purestream_cache:
+  purestream_session:
+
+    # NOTE: 
+    # - Frontend is served by backend at http://localhost:8002
+    # - Code changes require rebuild: docker-compose -f docker-compose.dev.yml up --build

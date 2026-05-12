@@ -4,12 +4,7 @@ import type { Video } from '../types';
 import { API_BASE_URL } from '../config';
 import { videoCache } from '../utils/videoCache';
 
-// Check if browser supports HEVC codec (Safari, Chrome 107+, Edge)
-const supportsHEVC = (): boolean => {
-    if (typeof MediaSource === 'undefined') return false;
-    return MediaSource.isTypeSupported('video/mp4; codecs="hvc1"') ||
-        MediaSource.isTypeSupported('video/mp4; codecs="hev1"');
-};
+
 
 interface HeartParticle {
     id: number;
@@ -55,7 +50,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     const [cachedUrl, setCachedUrl] = useState<string | null>(null);
     const [codecError, setCodecError] = useState(false);  // True if video codec not supported
     const lastTapRef = useRef<number>(0);
-    const browserSupportsHEVC = useRef(supportsHEVC());
+
 
     const fullProxyUrl = `${API_BASE_URL}/feed/proxy?url=${encodeURIComponent(video.url)}`;
     const thinProxyUrl = video.cdn_url ? `${API_BASE_URL}/feed/thin-proxy?cdn_url=${encodeURIComponent(video.cdn_url)}` : null;
@@ -154,15 +149,21 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
             const videoEl = e.target as HTMLVideoElement;
             const error = videoEl?.error;
 
-            // Check if this is a codec/decode error (MEDIA_ERR_DECODE = 3)
+            // Check if this is a codec/decode error (MEDIA_ERR_DECODE = 3, MEDIA_ERR_SRC_NOT_SUPPORTED = 4)
             if (error?.code === 3 || error?.code === 4) {
                 console.log(`Codec error detected (code ${error.code}):`, error.message);
-                // Only show codec error if browser doesn't support HEVC
-                if (!browserSupportsHEVC.current) {
-                    setCodecError(true);
-                    setIsLoading(false);
+
+                // Always fall back to full proxy which will transcode to H.264
+                if (!useFallback) {
+                    console.log('Codec not supported, falling back to full proxy (will transcode to H.264)...');
+                    setUseFallback(true);
                     return;
                 }
+
+                // If even full proxy failed, show error
+                setCodecError(true);
+                setIsLoading(false);
+                return;
             }
 
             if (thinProxyUrl && !useFallback) {
@@ -482,9 +483,9 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                 )}
             </div>
 
-            {/* Side Controls - Only show when video is paused */}
+            {/* Side Controls - Always visible on hover or when paused */}
             <div
-                className={`absolute bottom-36 right-4 flex flex-col gap-3 transition-all duration-300 transform ${isPaused && showSidebar ? 'translate-x-0 opacity-100' : 'translate-x-[200%] opacity-0'
+                className={`absolute bottom-36 right-4 flex flex-col gap-3 transition-all duration-300 transform ${showControls || isPaused ? 'translate-x-0 opacity-100' : 'translate-x-2 opacity-0'
                     }`}
             >
                 {/* Follow Button */}
@@ -505,6 +506,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                 <a
                     href={downloadUrl}
                     download
+                    onClick={(e) => e.stopPropagation()}
                     className="w-12 h-12 flex items-center justify-center bg-white/10 hover:bg-white/20 backdrop-blur-xl border border-white/10 rounded-full text-white transition-all"
                     title="Download"
                 >
