@@ -1,39 +1,27 @@
 # Build Stage for Frontend
-FROM node:18-alpine as frontend-build
+FROM --platform=linux/amd64 node:18-alpine AS frontend-build
 WORKDIR /app/frontend
 COPY frontend/package*.json ./
 RUN npm ci
 COPY frontend/ ./
 RUN npm run build
 
-# Runtime Stage for Backend
-FROM python:3.11-slim
-
-# Install system dependencies required for Playwright and compiled extensions
-RUN apt-get update && apt-get install -y \
-    curl \
-    git \
-    build-essential \
-    && rm -rf /var/lib/apt/lists/*
+# Runtime Stage
+FROM --platform=linux/amd64 mcr.microsoft.com/playwright/python:v1.49.1-jammy
 
 WORKDIR /app
 
-# Install Python dependencies
+RUN pip install --no-cache-dir -U yt-dlp fastapi uvicorn requests python-multipart websockets python-dotenv httpx crawl4ai playwright-stealth
+
 COPY backend/requirements.txt backend/
 RUN pip install --no-cache-dir -r backend/requirements.txt
 
-# Install Playwright browsers (Chromium only to save space)
-RUN playwright install chromium
-RUN playwright install-deps chromium
-
-# Copy Backend Code
 COPY backend/ backend/
 
-# Copy Built Frontend Assets
 COPY --from=frontend-build /app/frontend/dist /app/frontend/dist
 
-# Expose Port
+RUN playwright install chromium --with-deps
+
 EXPOSE 8002
 
-# Run Application
 CMD ["python", "backend/main.py"]

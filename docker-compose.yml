@@ -1,54 +1,27 @@
-version: '3.8'
+name: kv-tiktok
 
 services:
-  purestream:
-    image: vndangkhoa/purestream:latest
-    container_name: purestream
+  kv-tiktok:
+    image: kv-tiktok:latest
+    build:
+      context: .
+      dockerfile: Dockerfile
+      platforms:
+        - linux/amd64
+    container_name: kv-tiktok
     restart: unless-stopped
     ports:
       - "8002:8002"
     volumes:
       - ./cache:/app/cache
-      - ./session:/app/backend/session
+      - ./cookies.json:/app/cookies.json
     environment:
       - PYTHONUNBUFFERED=1
-      - CACHE_DIR=/app/cache
-      - MAX_CACHE_SIZE_MB=500
-      - CACHE_TTL_HOURS=24
-      - ADMIN_PASSWORD=admin123 # Change this to your secure password
-    shm_size: '2gb'
-    networks:
-      - purestream_net
+      - ADMIN_PASSWORD=admin123
+    shm_size: 2gb
     healthcheck:
-      test: [ "CMD", "curl", "-f", "http://localhost:8002/health" ]
+      test: ["CMD", "curl", "-f", "http://localhost:8002/health"]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 60s
-    labels:
-      - "com.centurylinklabs.watchtower.enable=true"
-
-  # Auto-updater: Checks for new images every 5 minutes
-  watchtower:
-    image: containrrr/watchtower
-    container_name: watchtower
-    restart: unless-stopped
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
-    environment:
-      - WATCHTOWER_CLEANUP=true # Remove old images
-      - WATCHTOWER_POLL_INTERVAL=300 # Check every 5 minutes
-      - WATCHTOWER_INCLUDE_RESTARTING=true
-      - WATCHTOWER_ROLLING_RESTART=true # Graceful restart
-      - WATCHTOWER_LABEL_ENABLE=true # Only update labeled containers
-    networks:
-      - purestream_net
-
-networks:
-  purestream_net:
-    driver: bridge
-    ipam:
-      driver: default
-      config:
-        # Using 10.10.0.0 is much safer and less likely to overlap
-        - subnet: 10.10.0.0/16
