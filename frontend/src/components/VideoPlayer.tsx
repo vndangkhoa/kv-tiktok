@@ -1,10 +1,8 @@
 import React, { useRef, useState, useEffect } from 'react';
-import { Download, UserPlus, Check, Volume2, VolumeX, AlertCircle } from 'lucide-react';
+import { Download, Volume2, VolumeX, AlertCircle, ZoomIn, ZoomOut } from 'lucide-react';
 import type { Video } from '../types';
 import { API_BASE_URL } from '../config';
 import { videoCache } from '../utils/videoCache';
-
-
 
 interface HeartParticle {
     id: number;
@@ -15,20 +13,14 @@ interface HeartParticle {
 interface VideoPlayerProps {
     video: Video;
     isActive: boolean;
-    isFollowing?: boolean;
-    onFollow?: (author: string) => void;
-    onAuthorClick?: (author: string) => void;  // In-app navigation to creator
-    isMuted?: boolean;  // Global mute state from parent
-    onMuteToggle?: () => void;  // Callback to toggle parent mute state
-    onPauseChange?: (isPaused: boolean) => void;  // Notify parent when play/pause state changes
+    isMuted?: boolean;
+    onMuteToggle?: () => void;
+    onPauseChange?: (isPaused: boolean) => void;
 }
 
 export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     video,
     isActive,
-    isFollowing = false,
-    onFollow,
-    onAuthorClick,
     isMuted: externalMuted,
     onMuteToggle,
     onPauseChange
@@ -46,25 +38,34 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     const [localMuted, setLocalMuted] = useState(true);
     const isMuted = externalMuted !== undefined ? externalMuted : localMuted;
     const [hearts, setHearts] = useState<HeartParticle[]>([]);
-    const [isLoading, setIsLoading] = useState(true);  // Show loading spinner until video is ready
+    const [isLoading, setIsLoading] = useState(true);
     const [cachedUrl, setCachedUrl] = useState<string | null>(null);
-    const [codecError, setCodecError] = useState(false);  // True if video codec not supported
+    const [codecError, setCodecError] = useState(false);
     const lastTapRef = useRef<number>(0);
 
+    // Zoom state
+    const [zoomLevel, setZoomLevel] = useState(1);
+    const [showZoomIndicator, setShowZoomIndicator] = useState(false);
+    const initialPinchDistance = useRef<number | null>(null);
+    const initialZoom = useRef<number>(1);
 
     const fullProxyUrl = `${API_BASE_URL}/feed/proxy?url=${encodeURIComponent(video.url)}`;
     const thinProxyUrl = video.cdn_url ? `${API_BASE_URL}/feed/thin-proxy?cdn_url=${encodeURIComponent(video.cdn_url)}` : null;
     const proxyUrl = cachedUrl ? cachedUrl : (thinProxyUrl && !useFallback) ? thinProxyUrl : fullProxyUrl;
     const downloadUrl = `${API_BASE_URL}/feed/proxy?url=${encodeURIComponent(video.url)}&download=true`;
 
+    // Reset zoom when video changes
+    useEffect(() => {
+        setZoomLevel(1);
+    }, [video.id]);
+
+    // Reset state when video changes
     useEffect(() => {
         if (isActive && videoRef.current) {
-            // Auto-play when becoming active
             if (videoRef.current.paused) {
                 videoRef.current.currentTime = 0;
-                videoRef.current.muted = isMuted;  // Use current mute state
+                videoRef.current.muted = isMuted;
                 videoRef.current.play().catch((err) => {
-                    // If autoplay fails even muted, show paused state
                     console.log('Autoplay blocked:', err.message);
                     setIsPaused(true);
                 });
@@ -73,21 +74,18 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         } else if (!isActive && videoRef.current) {
             videoRef.current.pause();
         }
-    }, [isActive]);  // Only trigger on isActive change
+    }, [isActive]);
 
-    // Sync video muted property when isMuted state changes
     useEffect(() => {
         if (videoRef.current) {
             videoRef.current.muted = isMuted;
         }
     }, [isMuted]);
 
-    // Spacebar to pause/play when this video is active
     useEffect(() => {
         if (!isActive) return;
 
         const handleKeyDown = (e: KeyboardEvent) => {
-            // Only handle spacebar when not typing
             const target = e.target as HTMLElement;
             if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA') return;
 
@@ -109,15 +107,12 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         return () => window.removeEventListener('keydown', handleKeyDown);
     }, [isActive]);
 
-    const [showSidebar, setShowSidebar] = useState(false);
-
-    // Reset fallback and loading state when video changes
     useEffect(() => {
         setUseFallback(false);
-        setIsLoading(true);  // Show loading for new video
-        setCodecError(false);  // Reset codec error for new video
+        setIsLoading(true);
+        setCodecError(false);
         setCachedUrl(null);
-        setShowSidebar(false); // Reset sidebar for new video
+        setZoomLevel(1);
 
         const checkCache = async () => {
             const cached = await videoCache.get(video.url);
@@ -130,7 +125,6 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         checkCache();
     }, [video.id]);
 
-    // Progress tracking
     useEffect(() => {
         const video = videoRef.current;
         if (!video) return;
@@ -143,24 +137,19 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
             setDuration(video.duration);
         };
 
-        // Fallback on error - if thin proxy fails, switch to full proxy
-        // Also detect codec errors for graceful fallback UI
         const handleError = (e: Event) => {
             const videoEl = e.target as HTMLVideoElement;
             const error = videoEl?.error;
 
-            // Check if this is a codec/decode error (MEDIA_ERR_DECODE = 3, MEDIA_ERR_SRC_NOT_SUPPORTED = 4)
             if (error?.code === 3 || error?.code === 4) {
                 console.log(`Codec error detected (code ${error.code}):`, error.message);
 
-                // Always fall back to full proxy which will transcode to H.264
                 if (!useFallback) {
                     console.log('Codec not supported, falling back to full proxy (will transcode to H.264)...');
                     setUseFallback(true);
                     return;
                 }
 
-                // If even full proxy failed, show error
                 setCodecError(true);
                 setIsLoading(false);
                 return;
@@ -217,12 +206,10 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         }
     };
 
-
     const toggleMute = (e: React.MouseEvent | React.TouchEvent) => {
-        e.stopPropagation();  // Prevent video tap
+        e.stopPropagation();
         if (!videoRef.current) return;
 
-        // Use external toggle if provided, otherwise use local state
         if (onMuteToggle) {
             onMuteToggle();
         } else {
@@ -230,51 +217,85 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         }
     };
 
-    // Handle tap - double tap shows heart, single tap toggles play
+    // Zoom functions
+    const zoomIn = (e: React.MouseEvent) => {
+        e.stopPropagation();
+        setZoomLevel(prev => Math.min(prev + 0.25, 3));
+        setShowZoomIndicator(true);
+    };
+
+    const zoomOut = (e: React.MouseEvent) => {
+        e.stopPropagation();
+        setZoomLevel(prev => Math.max(prev - 0.25, 0.5));
+        setShowZoomIndicator(true);
+    };
+
+    const resetZoom = (e: React.MouseEvent) => {
+        e.stopPropagation();
+        setZoomLevel(1);
+        setShowZoomIndicator(true);
+    };
+
+    // Hide zoom indicator after delay
+    useEffect(() => {
+        if (showZoomIndicator) {
+            const timer = setTimeout(() => setShowZoomIndicator(false), 1500);
+            return () => clearTimeout(timer);
+        }
+    }, [showZoomIndicator]);
+
+    // Pinch to zoom handler
+    const handleTouchMove = (e: React.TouchEvent<HTMLDivElement>) => {
+        if (e.touches.length === 2) {
+            e.preventDefault();
+            const touch1 = e.touches[0];
+            const touch2 = e.touches[1];
+            const currentDistance = Math.hypot(
+                touch2.clientX - touch1.clientX,
+                touch2.clientY - touch1.clientY
+            );
+
+            if (initialPinchDistance.current === null) {
+                initialPinchDistance.current = currentDistance;
+                initialZoom.current = zoomLevel;
+            }
+
+            const scale = currentDistance / initialPinchDistance.current;
+            const newZoom = Math.max(0.5, Math.min(3, initialZoom.current * scale));
+            setZoomLevel(newZoom);
+            setShowZoomIndicator(true);
+        }
+    };
+
+    const handleTouchEnd = () => {
+        initialPinchDistance.current = null;
+    };
+
+    // Heart animation
     const tapTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-    // Touch handler for multi-touch support
     const handleTouchStart = (e: React.TouchEvent<HTMLDivElement>) => {
-        setShowControls(true); // Ensure controls show on touch
+        setShowControls(true);
 
         const now = Date.now();
         const touches = Array.from(e.changedTouches);
 
-        // Use container rect for stable coordinates vs e.target
         if (!containerRef.current) return;
         const rect = containerRef.current.getBoundingClientRect();
 
-        const isMultiTouch = e.touches.length > 1; // Any simultaneous touches = hearts
-
-        // Check if this is a rapid tap sequence (potential hearts)
+        const isMultiTouch = e.touches.length > 1;
         let isRapid = false;
 
         touches.forEach((touch, index) => {
             const timeSinceLastTap = now - lastTapRef.current;
 
-            // Swipe Left from right edge check (to open sidebar)
-            const rectWidth = rect.width;
-            const startX = touch.clientX - rect.left;
-
-            // If touch starts near right edge (last 15% of screen)
-            if (startX > rectWidth * 0.85 && touches.length === 1) {
-                // We'll handle the actual swipe logic in touchMove/End, 
-                // but setting a flag or using the existing click logic might be easier.
-                // For now, let's allow a simple tap on the edge to toggle too, as per existing click logic.
-            }
-
-            // Show heart if:
-            // 1. Double tap (< 400ms)
-            // 2. OR Multi-touch (2+ fingers)
-            // 3. OR Secondary touch in this event
             if (timeSinceLastTap < 400 || isMultiTouch || index > 0) {
                 isRapid = true;
 
                 const x = touch.clientX - rect.left;
                 const y = touch.clientY - rect.top;
 
-                // Add heart
-                const heartId = Date.now() + index + Math.random(); // Unique ID
+                const heartId = Date.now() + index + Math.random();
                 setHearts(prev => [...prev, { id: heartId, x, y }]);
 
                 setTimeout(() => {
@@ -284,7 +305,6 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         });
 
         if (isRapid) {
-            // It was a heart tap - prevent default click (toggle pause)
             if (tapTimeoutRef.current) {
                 clearTimeout(tapTimeoutRef.current);
                 tapTimeoutRef.current = null;
@@ -294,29 +314,18 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         lastTapRef.current = now;
     };
 
-    // Click handler (Mouse / Single Touch fallback)
     const handleVideoClick = (e: React.MouseEvent<HTMLDivElement>) => {
-        // If we recently parsed a rapid touch (heart), ignore this click
         const now = Date.now();
         if (now - lastTapRef.current < 100) return;
 
-        // Check for double-click (for hearts)
         if (tapTimeoutRef.current) {
-            // Double click detected - show heart instead of toggle
             clearTimeout(tapTimeoutRef.current);
             tapTimeoutRef.current = null;
 
-            // Add heart at click position
             if (containerRef.current) {
                 const rect = containerRef.current.getBoundingClientRect();
                 const x = e.clientX - rect.left;
                 const y = e.clientY - rect.top;
-
-                // If clicked on the right edge, toggle sidebar
-                if (x > rect.width * 0.9) {
-                    setShowSidebar(prev => !prev);
-                    return;
-                }
 
                 const heartId = Date.now() + Math.random();
                 setHearts(prev => [...prev, { id: heartId, x, y }]);
@@ -325,7 +334,6 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                 }, 1000);
             }
         } else {
-            // First click - set timeout for double-click detection
             tapTimeoutRef.current = setTimeout(() => {
                 togglePlayPause();
                 tapTimeoutRef.current = null;
@@ -376,8 +384,10 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
             onMouseLeave={() => setShowControls(false)}
             onClick={handleVideoClick}
             onTouchStart={handleTouchStart}
+            onTouchMove={handleTouchMove}
+            onTouchEnd={handleTouchEnd}
         >
-            {/* Video Element - preload="metadata" for instant player readiness */}
+            {/* Video Element */}
             <video
                 ref={videoRef}
                 src={proxyUrl}
@@ -386,13 +396,15 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                 preload="metadata"
                 muted={isMuted}
                 className="w-full h-full"
-                style={{ objectFit }}
+                style={{ objectFit, transform: `scale(${zoomLevel})`, transition: zoomLevel !== 1 ? 'none' : 'transform 0.2s ease-out' }}
                 onCanPlay={() => setIsLoading(false)}
                 onWaiting={() => setIsLoading(true)}
                 onPlaying={() => setIsLoading(false)}
             />
 
-            {/* Loading Overlay - Subtle pulsing logo */}
+            {/* Zoom Indicator - centered (shown during pinch) */}
+
+            {/* Loading Overlay */}
             {isLoading && !codecError && (
                 <div className="absolute inset-0 flex items-center justify-center bg-black/40 z-20">
                     <div className="w-16 h-16 bg-gradient-to-r from-gray-400/80 to-gray-300/80 rounded-2xl flex items-center justify-center animate-pulse">
@@ -403,7 +415,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                 </div>
             )}
 
-            {/* Codec Error Fallback - Graceful UI for unsupported video codecs */}
+            {/* Codec Error Fallback */}
             {codecError && (
                 <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/80 z-20 p-6 text-center">
                     <AlertCircle className="w-12 h-12 text-amber-400 mb-3" />
@@ -467,14 +479,12 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                         className="h-full bg-gradient-to-r from-gray-400 to-gray-300 transition-all pointer-events-none"
                         style={{ width: duration ? `${(progress / duration) * 100}%` : '0%' }}
                     />
-                    {/* Scrubber Thumb (always visible when seeking or on hover) */}
                     <div
                         className={`absolute top-1/2 -translate-y-1/2 w-4 h-4 bg-white rounded-full shadow-lg transition-opacity pointer-events-none ${isSeeking ? 'opacity-100 scale-110' : 'opacity-0 group-hover:opacity-100'
                             }`}
                         style={{ left: duration ? `calc(${(progress / duration) * 100}% - 8px)` : '0' }}
                     />
                 </div>
-                {/* Time Display */}
                 {showControls && duration > 0 && (
                     <div className="flex justify-between px-4 py-1 text-xs text-white/60">
                         <span>{formatTime(progress)}</span>
@@ -483,22 +493,44 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                 )}
             </div>
 
-            {/* Side Controls - Always visible on hover or when paused */}
+            {/* Side Controls */}
             <div
                 className={`absolute bottom-36 right-4 flex flex-col gap-3 transition-all duration-300 transform ${showControls || isPaused ? 'translate-x-0 opacity-100' : 'translate-x-2 opacity-0'
                     }`}
             >
-                {/* Follow Button */}
-                {onFollow && (
+                {/* Zoom Indicator */}
+                {showZoomIndicator && zoomLevel !== 1 && (
+                    <div className="absolute bottom-full mb-3 left-1/2 -translate-x-1/2 bg-black/60 backdrop-blur-sm px-4 py-2 rounded-full z-50 pointer-events-none">
+                        <span className="text-white font-medium">{zoomLevel}x</span>
+                    </div>
+                )}
+
+                {/* Zoom In */}
+                <button
+                    onClick={zoomIn}
+                    className="w-12 h-12 flex items-center justify-center bg-white/10 hover:bg-white/20 backdrop-blur-xl border border-white/10 rounded-full text-white transition-all"
+                    title="Zoom In"
+                >
+                    <ZoomIn size={20} />
+                </button>
+
+                {/* Zoom Out */}
+                <button
+                    onClick={zoomOut}
+                    className="w-12 h-12 flex items-center justify-center bg-white/10 hover:bg-white/20 backdrop-blur-xl border border-white/10 rounded-full text-white transition-all"
+                    title="Zoom Out"
+                >
+                    <ZoomOut size={20} />
+                </button>
+
+                {/* Reset Zoom (only show when zoomed) */}
+                {zoomLevel !== 1 && (
                     <button
-                        onClick={(e) => { e.stopPropagation(); onFollow(video.author); }}
-                        className={`w-12 h-12 flex items-center justify-center backdrop-blur-xl border border-white/10 rounded-full transition-all ${isFollowing
-                            ? 'bg-gray-500 text-white'
-                            : 'bg-white/10 hover:bg-white/20 text-white'
-                            }`}
-                        title={isFollowing ? 'Following' : 'Follow'}
+                        onClick={resetZoom}
+                        className="w-12 h-12 flex items-center justify-center bg-white/10 hover:bg-white/20 backdrop-blur-xl border border-white/10 rounded-full text-white transition-all text-xs font-bold"
+                        title="Reset Zoom"
                     >
-                        {isFollowing ? <Check size={20} /> : <UserPlus size={20} />}
+                        1x
                     </button>
                 )}
 
@@ -523,22 +555,12 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                 </button>
             </div>
 
-            {/* Author Info - Only show when video is paused */}
+            {/* Author Info */}
             <div className={`absolute bottom-10 left-4 right-20 z-10 transition-opacity duration-300 ${isPaused ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
                 <div className="flex items-center gap-2">
-                    <button
-                        onClick={(e) => {
-                            e.stopPropagation();
-                            onAuthorClick?.(video.author);
-                        }}
-                        className="text-white font-semibold text-sm truncate hover:text-white/70 transition-colors inline-flex items-center gap-1"
-                    >
+                    <span className="text-white font-semibold text-sm truncate">
                         @{video.author}
-                        <svg className="w-3 h-3 opacity-50" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                            <circle cx="11" cy="11" r="8" />
-                            <path d="M21 21l-4.35-4.35" />
-                        </svg>
-                    </button>
+                    </span>
                     {video.views && (
                         <span className="text-white/40 text-xs">
                             {video.views >= 1000000
@@ -557,21 +579,8 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                 )}
             </div>
 
-            {/* Bottom Gradient - Only show when video is paused */}
+            {/* Bottom Gradient */}
             <div className={`absolute bottom-0 left-0 w-full h-32 bg-gradient-to-t from-black/80 to-transparent pointer-events-none transition-opacity duration-300 ${isPaused ? 'opacity-100' : 'opacity-0'}`} />
-
-            {/* Right Sidebar Hint - Only show when video is paused */}
-            <div
-                className={`absolute top-0 right-0 w-6 h-full z-40 flex items-center justify-end cursor-pointer transition-opacity duration-300 ${isPaused ? 'opacity-100' : 'opacity-0 pointer-events-none'} ${showSidebar ? 'pointer-events-none' : ''}`}
-                onClick={(e) => { e.stopPropagation(); setShowSidebar(true); }}
-                onTouchEnd={() => {
-                    // Check if it was a swipe logic here or just rely on the click/tap
-                    setShowSidebar(true);
-                }}
-            >
-                {/* Visual Hint */}
-                <div className="w-1 h-12 bg-white/20 rounded-full mr-1 shadow-[0_0_10px_rgba(255,255,255,0.3)] animate-pulse" />
-            </div>
         </div>
     );
 };
