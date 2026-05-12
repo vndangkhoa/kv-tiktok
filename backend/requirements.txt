@@ -5,6 +5,7 @@ requests
 python-multipart
 websockets
 python-dotenv
+httpx
 crawl4ai
-playwright
+playwright==1.49.1
 playwright-stealth
