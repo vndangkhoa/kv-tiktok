@@ -247,13 +247,14 @@ async def proxy_video(
         cookie_file.close()
         cookie_file_path = cookie_file.name
     
-    # Download best quality - NO TRANSCODING (let client decode)
-    # Prefer H.264 when available, but accept any codec
+    # Download best quality with H.264 video codec (browser compatible)
     ydl_opts = {
-        'format': 'best[ext=mp4][vcodec^=avc]/best[ext=mp4]/best',
+        'format': 'bestvideo[vcodec^=avc1][ext=mp4]+bestaudio[ext=m4a]/bestvideo[vcodec^=avc][ext=mp4]+bestaudio/best[ext=mp4][vcodec^=avc]/bestvideo[ext=mp4]+bestaudio/best',
         'outtmpl': output_template,
         'quiet': True,
         'no_warnings': True,
+        'retries': 5,
+        'fragment_retries': 5,
         'http_headers': {
             'User-Agent': user_agent,
             'Referer': 'https://www.tiktok.com/'
@@ -327,43 +328,38 @@ async def thin_proxy_video(
     cdn_url: str = Query(..., description="Direct TikTok CDN URL")
 ):
     """
-    Thin proxy - just forwards CDN requests with proper headers.
-    Supports Range requests for buffering and seeking.
+    Thin proxy - forwards CDN requests with proper headers.
+    For video playback, always returns full content on first request.
     """
-    
-    # Load stored credentials for headers
+
     cookies, user_agent = PlaywrightManager.load_stored_credentials()
-    
+
     headers = {
         "User-Agent": user_agent or PlaywrightManager.DEFAULT_USER_AGENT,
         "Referer": "https://www.tiktok.com/",
         "Accept": "*/*",
         "Accept-Language": "en-US,en;q=0.9",
         "Origin": "https://www.tiktok.com",
+        "Range": "bytes=0-",  # Request full file
     }
-    
-    # Add cookies as header if available
+
     if cookies:
         cookie_str = "; ".join([f"{c['name']}={c['value']}" for c in cookies])
         headers["Cookie"] = cookie_str
 
-    # Forward Range header if present
-    client_range = request.headers.get("Range")
-    if client_range:
-        headers["Range"] = client_range
-
     try:
-        # Create client outside stream generator to access response headers first
-        client = httpx.AsyncClient(timeout=60.0, follow_redirects=True)
-        # We need to manually close this client later or use it in the generator
-        
-        # Start the request to get headers (without reading body yet)
+        client = httpx.AsyncClient(timeout=120.0, follow_redirects=True)
         req = client.build_request("GET", cdn_url, headers=headers)
         r = await client.send(req, stream=True)
 
+        content_type = r.headers.get("Content-Type", "video/mp4")
+        content_length = r.headers.get("Content-Length")
+        content_range = r.headers.get("Content-Range")
+        status_code = r.status_code
+
         async def stream_from_cdn():
             try:
-                async for chunk in r.aiter_bytes(chunk_size=64 * 1024):
+                async for chunk in r.aiter_bytes(chunk_size=128 * 1024):
                     yield chunk
             finally:
                 await r.aclose()
@@ -372,17 +368,14 @@ async def thin_proxy_video(
         response_headers = {
             "Accept-Ranges": "bytes",
             "Cache-Control": "public, max-age=3600",
-            "Content-Type": r.headers.get("Content-Type", "video/mp4"),
+            "Content-Type": content_type,
         }
-        
-        # Forward Content-Length and Content-Range
-        if "Content-Length" in r.headers:
-            response_headers["Content-Length"] = r.headers["Content-Length"]
-        if "Content-Range" in r.headers:
-            response_headers["Content-Range"] = r.headers["Content-Range"]
-            
-        status_code = r.status_code
-        
+
+        if content_length:
+            response_headers["Content-Length"] = content_length
+        if content_range:
+            response_headers["Content-Range"] = content_range
+
         return StreamingResponse(
             stream_from_cdn(),
             status_code=status_code,
@@ -392,5 +385,4 @@ async def thin_proxy_video(
 
     except Exception as e:
         print(f"Thin proxy error: {e}")
-        # Ensure cleanup if possible
         raise HTTPException(status_code=500, detail=str(e))

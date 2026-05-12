@@ -356,30 +356,19 @@ export const Feed: React.FC = () => {
                         style={{ scrollbarWidth: 'none' }}
                     >
                         {videos.map((video, index) => (
-                            <div key={video.id} className="w-full h-screen-safe snap-start snap-always bg-black">
-                                {Math.abs(index - currentIndex) <= 1 ? (
+                            <div key={video.id} className="w-full h-screen-safe snap-start snap-always bg-black flex justify-center">
+                                {index === currentIndex ? (
+                                    <div className="w-full max-w-[500px]">
                                     <VideoPlayer
                                         video={video}
-                                        isActive={activeTab === 'foryou' && index === currentIndex}
+                                        isActive={true}
                                         isMuted={isMuted}
                                         onMuteToggle={() => setIsMuted(prev => !prev)}
                                     />
+                                    </div>
                                 ) : (
-                                    <div className="w-full h-full bg-black flex items-center justify-center relative overflow-hidden">
-                                        {video.thumbnail ? (
-                                            <>
-                                                <img
-                                                    src={video.thumbnail}
-                                                    className="w-full h-full object-cover opacity-30 blur-xl scale-110"
-                                                    loading="lazy"
-                                                />
-                                                <div className="absolute inset-0 flex items-center justify-center">
-                                                    <div className="w-10 h-10 border-4 border-white/10 border-t-white/30 rounded-full animate-spin" />
-                                                </div>
-                                            </>
-                                        ) : (
-                                            <div className="w-10 h-10 border-4 border-white/10 border-t-white/30 rounded-full animate-spin" />
-                                        )}
+                                    <div className="w-full max-w-[500px] h-full bg-black flex items-center justify-center relative overflow-hidden">
+                                        <div className="w-10 h-10 border-4 border-white/10 border-t-white/30 rounded-full animate-spin" />
                                     </div>
                                 )}
                             </div>
@@ -402,30 +391,19 @@ export const Feed: React.FC = () => {
                     >
                         {likesVideos.length > 0 ? (
                             likesVideos.map((video, index) => (
-                                <div key={video.id} className="w-full h-screen-safe snap-start snap-always bg-black">
-                                    {Math.abs(index - likesCurrentIndex) <= 1 ? (
+                                <div key={video.id} className="w-full h-screen-safe snap-start snap-always bg-black flex justify-center">
+                                    {index === likesCurrentIndex ? (
+                                        <div className="w-full max-w-[500px]">
                                         <VideoPlayer
                                             video={video}
-                                            isActive={activeTab === 'likes' && index === likesCurrentIndex}
+                                            isActive={true}
                                             isMuted={isMuted}
                                             onMuteToggle={() => setIsMuted(prev => !prev)}
                                         />
+                                        </div>
                                     ) : (
-                                        <div className="w-full h-full bg-black flex items-center justify-center relative overflow-hidden">
-                                            {video.thumbnail ? (
-                                                <>
-                                                    <img
-                                                        src={video.thumbnail}
-                                                        className="w-full h-full object-cover opacity-30 blur-xl scale-110"
-                                                        loading="lazy"
-                                                    />
-                                                    <div className="absolute inset-0 flex items-center justify-center">
-                                                        <div className="w-10 h-10 border-4 border-white/10 border-t-white/30 rounded-full animate-spin" />
-                                                    </div>
-                                                </>
-                                            ) : (
-                                                <div className="w-10 h-10 border-4 border-white/10 border-t-white/30 rounded-full animate-spin" />
-                                            )}
+                                        <div className="w-full max-w-[500px] h-full bg-black flex items-center justify-center relative overflow-hidden">
+                                            <div className="w-10 h-10 border-4 border-white/10 border-t-white/30 rounded-full animate-spin" />
                                         </div>
                                     )}
                                 </div>

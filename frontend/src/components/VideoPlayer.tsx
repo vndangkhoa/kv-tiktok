@@ -28,19 +28,17 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     const videoRef = useRef<HTMLVideoElement>(null);
     const containerRef = useRef<HTMLDivElement>(null);
     const progressBarRef = useRef<HTMLDivElement>(null);
-    const [isPaused, setIsPaused] = useState(false);
-    const [showControls, setShowControls] = useState(false);
-    const [objectFit] = useState<'cover' | 'contain'>('cover');
-    const [progress, setProgress] = useState(0);
-    const [duration, setDuration] = useState(0);
     const [isSeeking, setIsSeeking] = useState(false);
-    const [useFallback, setUseFallback] = useState(false);
     const [localMuted, setLocalMuted] = useState(true);
     const isMuted = externalMuted !== undefined ? externalMuted : localMuted;
     const [hearts, setHearts] = useState<HeartParticle[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [cachedUrl, setCachedUrl] = useState<string | null>(null);
     const [codecError, setCodecError] = useState(false);
+    const [showControls, setShowControls] = useState(false);
+    const [progress, setProgress] = useState(0);
+    const [duration, setDuration] = useState(0);
+    const [isPaused, setIsPaused] = useState(false);
     const lastTapRef = useRef<number>(0);
 
     // Zoom state
@@ -51,44 +49,16 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
 
     const fullProxyUrl = `${API_BASE_URL}/feed/proxy?url=${encodeURIComponent(video.url)}`;
     const thinProxyUrl = video.cdn_url ? `${API_BASE_URL}/feed/thin-proxy?cdn_url=${encodeURIComponent(video.cdn_url)}` : null;
-    const proxyUrl = cachedUrl ? cachedUrl : (thinProxyUrl && !useFallback) ? thinProxyUrl : fullProxyUrl;
+    const proxyUrl = cachedUrl || (thinProxyUrl || fullProxyUrl);
     const downloadUrl = `${API_BASE_URL}/feed/proxy?url=${encodeURIComponent(video.url)}&download=true`;
 
-    // Reset zoom when video changes
-    useEffect(() => {
-        setZoomLevel(1);
-    }, [video.id]);
-
-    // Reset state when video changes
-    useEffect(() => {
-        if (isActive && videoRef.current) {
-            if (videoRef.current.paused) {
-                videoRef.current.currentTime = 0;
-                videoRef.current.muted = isMuted;
-                videoRef.current.play().catch((err) => {
-                    console.log('Autoplay blocked:', err.message);
-                    setIsPaused(true);
-                });
-                setIsPaused(false);
-            }
-        } else if (!isActive && videoRef.current) {
-            videoRef.current.pause();
-        }
-    }, [isActive]);
-
-    useEffect(() => {
-        if (videoRef.current) {
-            videoRef.current.muted = isMuted;
-        }
-    }, [isMuted]);
+    const videoSrc = isActive ? proxyUrl : '';
 
     useEffect(() => {
         if (!isActive) return;
-
         const handleKeyDown = (e: KeyboardEvent) => {
             const target = e.target as HTMLElement;
             if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA') return;
-
             if (e.code === 'Space') {
                 e.preventDefault();
                 if (videoRef.current) {
@@ -102,17 +72,20 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                 }
             }
         };
-
         window.addEventListener('keydown', handleKeyDown);
         return () => window.removeEventListener('keydown', handleKeyDown);
     }, [isActive]);
 
     useEffect(() => {
-        setUseFallback(false);
+        if (!videoRef.current) return;
+        videoRef.current.muted = isMuted;
+    }, [isMuted]);
+
+    useEffect(() => {
+        setZoomLevel(1);
         setIsLoading(true);
         setCodecError(false);
         setCachedUrl(null);
-        setZoomLevel(1);
 
         const checkCache = async () => {
             const cached = await videoCache.get(video.url);
@@ -121,56 +94,18 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                 setCachedUrl(blob_url);
             }
         };
-
         checkCache();
     }, [video.id]);
 
     useEffect(() => {
-        const video = videoRef.current;
-        if (!video) return;
-
-        const handleTimeUpdate = () => {
-            setProgress(video.currentTime);
-        };
-
-        const handleLoadedMetadata = () => {
-            setDuration(video.duration);
-        };
-
-        const handleError = (e: Event) => {
-            const videoEl = e.target as HTMLVideoElement;
-            const error = videoEl?.error;
-
-            if (error?.code === 3 || error?.code === 4) {
-                console.log(`Codec error detected (code ${error.code}):`, error.message);
-
-                if (!useFallback) {
-                    console.log('Codec not supported, falling back to full proxy (will transcode to H.264)...');
-                    setUseFallback(true);
-                    return;
-                }
-
-                setCodecError(true);
-                setIsLoading(false);
-                return;
-            }
-
-            if (thinProxyUrl && !useFallback) {
-                console.log('Thin proxy failed, falling back to full proxy...');
-                setUseFallback(true);
-            }
-        };
-
-        video.addEventListener('timeupdate', handleTimeUpdate);
-        video.addEventListener('loadedmetadata', handleLoadedMetadata);
-        video.addEventListener('error', handleError);
-
-        return () => {
-            video.removeEventListener('timeupdate', handleTimeUpdate);
-            video.removeEventListener('loadedmetadata', handleLoadedMetadata);
-            video.removeEventListener('error', handleError);
-        };
-    }, [thinProxyUrl, useFallback, cachedUrl]);
+        if (!videoRef.current || !isActive) return;
+        videoRef.current.currentTime = 0;
+        videoRef.current.muted = isMuted;
+        videoRef.current.play().catch(() => {
+            setIsPaused(true);
+        });
+        setIsPaused(false);
+    }, [isActive, proxyUrl]);
 
     useEffect(() => {
         const cacheVideo = async () => {
@@ -379,7 +314,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     return (
         <div
             ref={containerRef}
-            className="relative w-full h-full bg-black flex items-center justify-center overflow-hidden"
+            className="relative w-full max-w-[500px] mx-auto h-full bg-black overflow-hidden"
             onMouseEnter={() => setShowControls(true)}
             onMouseLeave={() => setShowControls(false)}
             onClick={handleVideoClick}
@@ -390,51 +325,37 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
             {/* Video Element */}
             <video
                 ref={videoRef}
-                src={proxyUrl}
+                src={videoSrc}
+                autoPlay
                 loop
                 playsInline
-                preload="metadata"
+                preload="auto"
                 muted={isMuted}
-                className="w-full h-full"
-                style={{ objectFit, transform: `scale(${zoomLevel})`, transition: zoomLevel !== 1 ? 'none' : 'transform 0.2s ease-out' }}
+                className="absolute inset-0 w-full h-full"
+                style={{ objectFit: 'cover', transform: `scale(${zoomLevel})`, transition: zoomLevel !== 1 ? 'none' : 'transform 0.2s ease-out' }}
                 onCanPlay={() => setIsLoading(false)}
                 onWaiting={() => setIsLoading(true)}
                 onPlaying={() => setIsLoading(false)}
             />
 
-            {/* Zoom Indicator - centered (shown during pinch) */}
-
-            {/* Loading Overlay */}
+            {/* Loading Spinner */}
             {isLoading && !codecError && (
-                <div className="absolute inset-0 flex items-center justify-center bg-black/40 z-20">
-                    <div className="w-16 h-16 bg-gradient-to-r from-gray-400/80 to-gray-300/80 rounded-2xl flex items-center justify-center animate-pulse">
-                        <svg className="w-8 h-8 text-white" viewBox="0 0 24 24" fill="currentColor">
-                            <path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z" />
-                        </svg>
-                    </div>
+                <div className="absolute top-4 right-4 z-20">
+                    <div className="w-8 h-8 border-2 border-white/30 border-t-white/80 rounded-full animate-spin" />
                 </div>
             )}
 
             {/* Codec Error Fallback */}
             {codecError && (
-                <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/80 z-20 p-6 text-center">
+                <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/60 z-20 p-6 text-center">
                     <AlertCircle className="w-12 h-12 text-amber-400 mb-3" />
                     <h3 className="text-white font-semibold text-lg mb-2">Video Format Not Supported</h3>
-                    <p className="text-white/60 text-sm mb-4 max-w-xs">
-                        This video uses HEVC codec. Try Safari, Chrome 107+, or download to watch.
-                    </p>
-                    <a
-                        href={downloadUrl}
-                        download
-                        className="px-4 py-2 bg-gradient-to-r from-gray-500 to-gray-400 text-white text-sm font-medium rounded-full hover:opacity-90 transition-opacity"
-                        onClick={(e) => e.stopPropagation()}
-                    >
-                        Download Video
-                    </a>
+                    <p className="text-white/60 text-sm mb-4 max-w-xs">This video uses HEVC codec. Try Safari, Chrome 107+, or download to watch.</p>
+                    <a href={downloadUrl} download className="px-4 py-2 bg-gray-500 text-white text-sm font-medium rounded-full hover:bg-gray-400" onClick={(e) => e.stopPropagation()}>Download Video</a>
                 </div>
             )}
 
-            {/* Heart Animation Particles */}
+            {/* Heart Animation */}
             {hearts.map(heart => (
                 <div
                     key={heart.id}
@@ -449,17 +370,6 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                     </svg>
                 </div>
             ))}
-
-            {/* Pause Icon Overlay */}
-            {isPaused && (
-                <div className="absolute inset-0 flex items-center justify-center bg-black/20 pointer-events-none">
-                    <div className="w-20 h-20 flex items-center justify-center bg-white/20 backdrop-blur-sm rounded-full">
-                        <svg className="w-10 h-10 text-white ml-1" viewBox="0 0 24 24" fill="currentColor">
-                            <path d="M8 5v14l11-7z" />
-                        </svg>
-                    </div>
-                </div>
-            )}
 
             {/* Video Timeline/Progress Bar */}
             <div className="absolute bottom-0 left-0 right-0 z-30">
@@ -493,94 +403,81 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                 )}
             </div>
 
-            {/* Side Controls */}
-            <div
-                className={`absolute bottom-36 right-4 flex flex-col gap-3 transition-all duration-300 transform ${showControls || isPaused ? 'translate-x-0 opacity-100' : 'translate-x-2 opacity-0'
-                    }`}
-            >
-                {/* Zoom Indicator */}
-                {showZoomIndicator && zoomLevel !== 1 && (
-                    <div className="absolute bottom-full mb-3 left-1/2 -translate-x-1/2 bg-black/60 backdrop-blur-sm px-4 py-2 rounded-full z-50 pointer-events-none">
-                        <span className="text-white font-medium">{zoomLevel}x</span>
-                    </div>
-                )}
-
-                {/* Zoom In */}
-                <button
-                    onClick={zoomIn}
-                    className="w-12 h-12 flex items-center justify-center bg-white/10 hover:bg-white/20 backdrop-blur-xl border border-white/10 rounded-full text-white transition-all"
-                    title="Zoom In"
-                >
-                    <ZoomIn size={20} />
-                </button>
-
-                {/* Zoom Out */}
-                <button
-                    onClick={zoomOut}
-                    className="w-12 h-12 flex items-center justify-center bg-white/10 hover:bg-white/20 backdrop-blur-xl border border-white/10 rounded-full text-white transition-all"
-                    title="Zoom Out"
-                >
-                    <ZoomOut size={20} />
-                </button>
-
-                {/* Reset Zoom (only show when zoomed) */}
-                {zoomLevel !== 1 && (
-                    <button
-                        onClick={resetZoom}
-                        className="w-12 h-12 flex items-center justify-center bg-white/10 hover:bg-white/20 backdrop-blur-xl border border-white/10 rounded-full text-white transition-all text-xs font-bold"
-                        title="Reset Zoom"
+            {/* Side Controls - centered at bottom of video, above author info */}
+            <div className={`absolute bottom-20 left-0 right-0 flex justify-center z-40 transition-all duration-300 ${showControls ? 'opacity-100' : 'opacity-0'}`}>
+                <div className="flex flex-col items-center gap-2">
+                    {/* Zoom Indicator - above buttons */}
+                    <div
+                        className={`transition-all duration-200 ${showZoomIndicator ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-2 pointer-events-none'}`}
                     >
-                        1x
-                    </button>
-                )}
+                        <div className="bg-black/70 backdrop-blur-md px-4 py-2 rounded-full border border-white/10 shadow-lg">
+                            <span className="text-white font-semibold text-sm tabular-nums">{zoomLevel.toFixed(2)}x</span>
+                        </div>
+                    </div>
 
-                {/* Download Button */}
-                <a
-                    href={downloadUrl}
-                    download
-                    onClick={(e) => e.stopPropagation()}
-                    className="w-12 h-12 flex items-center justify-center bg-white/10 hover:bg-white/20 backdrop-blur-xl border border-white/10 rounded-full text-white transition-all"
-                    title="Download"
-                >
-                    <Download size={20} />
-                </a>
+                    <div className="flex items-center gap-2 bg-black/40 backdrop-blur-xl rounded-full px-4 py-2 border border-white/10">
+                        {/* Zoom In */}
+                        <button
+                            onClick={zoomIn}
+                            className="w-10 h-10 flex items-center justify-center text-white hover:bg-white/10 rounded-full transition-all"
+                            title="Zoom In"
+                        >
+                            <ZoomIn size={20} />
+                        </button>
 
-                {/* Mute Toggle */}
-                <button
-                    onClick={toggleMute}
-                    className="w-12 h-12 flex items-center justify-center bg-white/10 hover:bg-white/20 backdrop-blur-xl border border-white/10 rounded-full text-white transition-all"
-                    title={isMuted ? 'Unmute' : 'Mute'}
-                >
-                    {isMuted ? <VolumeX size={20} /> : <Volume2 size={20} />}
-                </button>
-            </div>
+                        {/* Zoom Out */}
+                        <button
+                            onClick={zoomOut}
+                            className="w-10 h-10 flex items-center justify-center text-white hover:bg-white/10 rounded-full transition-all"
+                            title="Zoom Out"
+                        >
+                            <ZoomOut size={20} />
+                        </button>
 
-            {/* Author Info */}
-            <div className={`absolute bottom-10 left-4 right-20 z-10 transition-opacity duration-300 ${isPaused ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
-                <div className="flex items-center gap-2">
-                    <span className="text-white font-semibold text-sm truncate">
-                        @{video.author}
-                    </span>
-                    {video.views && (
-                        <span className="text-white/40 text-xs">
-                            {video.views >= 1000000
-                                ? `${(video.views / 1000000).toFixed(1)}M views`
-                                : video.views >= 1000
-                                    ? `${(video.views / 1000).toFixed(0)}K views`
-                                    : `${video.views} views`
-                            }
-                        </span>
-                    )}
+                        {/* Reset Zoom (only show when zoomed) */}
+                        {zoomLevel !== 1 && (
+                            <button
+                                onClick={resetZoom}
+                                className="w-10 h-10 flex items-center justify-center text-white hover:bg-white/10 rounded-full transition-all text-xs font-bold"
+                                title="Reset Zoom"
+                            >
+                                1x
+                            </button>
+                        )}
+
+                        <div className="w-px h-6 bg-white/20 mx-1" />
+
+                        {/* Download Button */}
+                        <a
+                            href={downloadUrl}
+                            download
+                            onClick={(e) => e.stopPropagation()}
+                            className="w-10 h-10 flex items-center justify-center text-white hover:bg-white/10 rounded-full transition-all"
+                            title="Download"
+                        >
+                            <Download size={20} />
+                        </a>
+
+                        {/* Mute Toggle */}
+                        <button
+                            onClick={toggleMute}
+                            className="w-10 h-10 flex items-center justify-center text-white hover:bg-white/10 rounded-full transition-all"
+                            title={isMuted ? 'Unmute' : 'Mute'}
+                        >
+                            {isMuted ? <VolumeX size={20} /> : <Volume2 size={20} />}
+                        </button>
+                    </div>
                 </div>
-                {video.description && (
-                    <p className="text-white/70 text-xs line-clamp-2 mt-1">
-                        {video.description}
-                    </p>
-                )}
             </div>
 
-            {/* Bottom Gradient */}
-            <div className={`absolute bottom-0 left-0 w-full h-32 bg-gradient-to-t from-black/80 to-transparent pointer-events-none transition-opacity duration-300 ${isPaused ? 'opacity-100' : 'opacity-0'}`} />
+            {/* Author Info - below controls */}
+            <div className={`absolute bottom-6 left-4 right-4 z-10 transition-opacity duration-300 ${showControls ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
+                <div className="flex items-center gap-2">
+                    <span className="text-white font-semibold text-sm truncate">@{video.author}</span>
+                    {video.views && <span className="text-white/40 text-xs">{video.views >= 1000000 ? `${(video.views / 1000000).toFixed(1)}M views` : video.views >= 1000 ? `${(video.views / 1000).toFixed(0)}K views` : `${video.views} views`}</span>}
+                </div>
+                {video.description && <p className="text-white/70 text-xs line-clamp-2 mt-1">{video.description}</p>}
+            </div>
         </div>
     );
 };
