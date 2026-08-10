@@ -1,6 +1,6 @@
 {
-    "name": "PureStream",
-    "short_name": "PureStream",
+    "name": "kv-tiktok",
+    "short_name": "kv-tiktok",
     "description": "Distraction-free TikTok viewing experience",
     "start_url": "/",
     "display": "standalone",

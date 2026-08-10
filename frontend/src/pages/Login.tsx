@@ -72,7 +72,7 @@ export const Login: React.FC = () => {
                     </div>
                 </div>
 
-                <h1 className="text-2xl font-bold text-white mb-2">PureStream</h1>
+                <h1 className="text-2xl font-bold text-white mb-2">kv-tiktok</h1>
                 <p className="text-gray-500 text-sm mb-8">Ad-free TikTok viewing</p>
 
                 {/* Not Configured Message */}

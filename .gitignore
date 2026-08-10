@@ -1,6 +1,9 @@
 # Dependencies
 node_modules/
 venv/
+.venv/
+backend/venv/
+backend/.venv/
 __pycache__/
 *.pyc
 .env
@@ -32,6 +35,8 @@ backend/cookies.json
 backend/cookies_netscape.txt
 backend/session_metadata.json
 backend/user_agent.json
+cookies.json
+temp_cookies.json
 
 # Downloads (large files)
 backend/downloads/
@@ -39,6 +44,14 @@ downloads/
 
 # Debug files
 backend/debug_*.html
+debug_search_*
+crawl_debug.*
+all_responses.jsonl
+ssr_data.json
+
+# Runtime data
+following.json
+.run/
 
 # Playwright
 playwright-report/

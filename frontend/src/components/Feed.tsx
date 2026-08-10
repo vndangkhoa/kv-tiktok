@@ -160,7 +160,7 @@ export const Feed: React.FC = () => {
                             </svg>
                         </div>
                     </div>
-                    <h1 className="text-2xl font-bold text-white mb-1">PureStream</h1>
+                    <h1 className="text-2xl font-bold text-white mb-1">kv-tiktok</h1>
                     <p className="text-gray-500 text-sm">Ad-free TikTok viewing</p>
                 </div>
 

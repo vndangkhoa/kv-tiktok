@@ -820,18 +820,6 @@ class PlaywrightManager:
             
             url = response.url
             
-            # Log ALL API responses to find the right one
-            if "/api/" in url and "tiktok.com" in url:
-                try:
-                    content_type = response.headers.get("content-type", "")
-                    if "json" in content_type.lower():
-                        data = await response.json()
-                        log_entry = {"url": url, "keys": list(data.keys()) if isinstance(data, dict) else "not dict"}
-                        with open("all_responses.jsonl", "a", encoding="utf-8") as f:
-                            f.write(json.dumps(log_entry) + "\n")
-                except:
-                    pass
-
             # Look for search results API - stricter
             is_search_api = "/api/search/" in url and ("item" in url or "general" in url or "full" in url)
             
@@ -842,21 +830,6 @@ class PlaywrightManager:
                         return
                         
                     data = await response.json()
-                    
-                    # Debug: print the actual structure
-                    if data:
-                        keys = list(data.keys()) if isinstance(data, dict) else "not a dict"
-                        print(f"DEBUG: Search API response keys: {keys} from {url}")
-                        
-                        # DUMP FOR DEBUGGING
-                        try:
-                            # Append to file or overwrite with list? Overwrite with wrapper for now
-                            debug_data = {"url": url, "response": data}
-                            with open("debug_search_response.json", "w", encoding="utf-8") as f:
-                                json.dump(debug_data, f, indent=2)
-                            print("DEBUG: Dumped search response to debug_search_response.json")
-                        except Exception as e:
-                            print(f"DEBUG: Failed to dump response: {e}")
                     
                     # Try different response formats - TikTok nests data in various ways
                     items = []
@@ -955,18 +928,6 @@ class PlaywrightManager:
                 
             except Exception as e:
                 print(f"DEBUG: Error during search: {e}")
-            
-            try:
-                await page.screenshot(path="debug_search_page.png")
-                print("DEBUG: Saved screenshot to debug_search_page.png")
-                
-                # Dump HTML
-                html_content = await page.content()
-                with open("debug_search_page.html", "w", encoding="utf-8") as f:
-                    f.write(html_content)
-                print("DEBUG: Saved HTML to debug_search_page.html")
-            except:
-                pass
 
             await browser.close()
         

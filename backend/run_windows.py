@@ -1,5 +1,5 @@
 """
-Windows-compatible startup script for PureStream.
+Windows-compatible startup script for kv-tiktok.
 Sets ProactorEventLoop policy BEFORE uvicorn imports anything.
 """
 import sys

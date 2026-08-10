@@ -9,7 +9,7 @@ $BackendDir = Join-Path $RootPath "backend"
 $FrontendDir = Join-Path $RootPath "frontend"
 
 function Stop-App {
-    Write-Host "Stopping PureStream..." -ForegroundColor Yellow
+    Write-Host "Stopping kv-tiktok..." -ForegroundColor Yellow
     $ports = @($BackendPort, $FrontendPort)
     foreach ($port in $ports) {
         $processes = Get-NetTCPConnection -LocalPort $port -ErrorAction SilentlyContinue | Select-Object -ExpandProperty OwningProcess -Unique
@@ -35,15 +35,15 @@ function Start-App {
         Stop-App
     }
 
-    Write-Host "Starting PureStream Backend..." -ForegroundColor Cyan
+    Write-Host "Starting kv-tiktok Backend..." -ForegroundColor Cyan
     # Launch in a new CMD window so user can see logs and it stays open (/k)
-    Start-Process "cmd.exe" -ArgumentList "/k title PureStream Backend & cd /d `"$BackendDir`" & python run_windows.py" -WindowStyle Normal
+    Start-Process "cmd.exe" -ArgumentList "/k title kv-tiktok Backend & cd /d `"$BackendDir`" & python run_windows.py" -WindowStyle Normal
 
-    Write-Host "Starting PureStream Frontend..." -ForegroundColor Cyan
+    Write-Host "Starting kv-tiktok Frontend..." -ForegroundColor Cyan
     # Launch in a new CMD window
-    Start-Process "cmd.exe" -ArgumentList "/k title PureStream Frontend & cd /d `"$FrontendDir`" & npm run dev" -WindowStyle Normal
+    Start-Process "cmd.exe" -ArgumentList "/k title kv-tiktok Frontend & cd /d `"$FrontendDir`" & npm run dev" -WindowStyle Normal
     
-    Write-Host "PureStream is starting!" -ForegroundColor Green
+    Write-Host "kv-tiktok is starting!" -ForegroundColor Green
     Write-Host "Backend API: http://localhost:$BackendPort"
     Write-Host "Frontend UI: http://localhost:$FrontendPort"
 }

@@ -6,7 +6,7 @@ interface CachedVideo {
   size: number;
 }
 
-const DB_NAME = 'PureStreamCache';
+const DB_NAME = 'kvTiktokCache';
 const STORE_NAME = 'videos';
 const MAX_CACHE_SIZE_MB = 200;
 const CACHE_TTL_HOURS = 24;

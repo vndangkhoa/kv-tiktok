@@ -31,7 +31,7 @@ DEFAULT_CONFIG = {
         {"username": "@changmie", "label": "🎤 Changmie - Singer/Mashups"},
         {"username": "@vuthuydien", "label": "😄 Vũ Thụy Điển - Humor"},
     ],
-    "app_name": "PureStream",
+    "app_name": "kv-tiktok",
     "version": "1.0.0"
 }
 

@@ -12,13 +12,13 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from contextlib import asynccontextmanager
 from pathlib import Path
-from api.routes import auth, feed, download, following, config, user, likes
+from api.routes import auth, feed, download, following, config, user
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Startup and shutdown events."""
-    print("🚀 Starting PureStream API (Network Interception Mode)...")
+    print("🚀 Starting kv-tiktok API (Network Interception Mode)...")
     import asyncio
     try:
         loop = asyncio.get_running_loop()
@@ -26,12 +26,12 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         print(f"DEBUG: Could not get running loop: {e}")
     yield
-    print("👋 Shutting down PureStream API...")
+    print("👋 Shutting down kv-tiktok API...")
 
 import asyncio
 import sys
 
-app = FastAPI(title="PureStream API", version="2.0.0", lifespan=lifespan)
+app = FastAPI(title="kv-tiktok API", version="2.0.0", lifespan=lifespan)
 
 if __name__ == "__main__":
     if sys.platform == "win32":
@@ -58,7 +58,6 @@ app.include_router(download.router, prefix="/api/download", tags=["Download"])
 app.include_router(following.router, prefix="/api/following", tags=["Following"])
 app.include_router(config.router, prefix="/api/config", tags=["Config"])
 app.include_router(user.router, prefix="/api/user", tags=["User"])
-app.include_router(likes.router, prefix="/api", tags=["Likes"])
 
 @app.get("/health")
 async def health_check():

@@ -20,7 +20,7 @@ from core.playwright_manager import PlaywrightManager
 router = APIRouter()
 
 # ========== LRU VIDEO CACHE ==========
-CACHE_DIR = os.path.join(tempfile.gettempdir(), "purestream_cache")
+CACHE_DIR = os.path.join(tempfile.gettempdir(), "kv_tiktok_cache")
 MAX_CACHE_SIZE_MB = 500  # Limit cache to 500MB
 MAX_CACHE_FILES = 30     # Keep max 30 videos cached
 CACHE_TTL_HOURS = 2      # Videos expire after 2 hours

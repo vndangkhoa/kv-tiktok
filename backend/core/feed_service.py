@@ -197,15 +197,7 @@ class FeedService:
             
             print(f"DEBUG: Found {len(unique_videos)} unique videos in HTML")
             print(f"DEBUG: HTML length: {len(html)} characters")
-            
-            # Debug: Save HTML to file for inspection
-            try:
-                with open("debug_tiktok.html", "w") as f:
-                    f.write(html)
-                print("DEBUG: Saved HTML to debug_tiktok.html")
-            except:
-                pass
-            
+
             if unique_videos:
                 # Build video objects (author and video_id already extracted)
                 for author, video_id in unique_videos:
