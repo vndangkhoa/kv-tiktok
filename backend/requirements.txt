@@ -1,6 +1,7 @@
 fastapi
 uvicorn
 yt-dlp
+curl_cffi>=0.15,<0.16
 requests
 python-multipart
 websockets

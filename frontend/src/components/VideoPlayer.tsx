@@ -42,7 +42,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     const fullProxyUrl = `${API_BASE_URL}/feed/proxy?url=${encodeURIComponent(video.url)}`;
     const thinProxyUrl = video.cdn_url ? `${API_BASE_URL}/feed/thin-proxy?cdn_url=${encodeURIComponent(video.cdn_url)}` : null;
     const proxyUrl = cachedUrl || (thinProxyUrl || fullProxyUrl);
-    const downloadUrl = `${API_BASE_URL}/feed/proxy?url=${encodeURIComponent(video.url)}&download=true`;
+    const downloadUrl = `${API_BASE_URL}/feed/proxy?url=${encodeURIComponent(video.url)}&download=true${video.cdn_url ? `&cdn_url=${encodeURIComponent(video.cdn_url)}` : ''}`;
 
     const videoSrc = isActive ? proxyUrl : '';
 

@@ -198,21 +198,23 @@ async def clear_cache():
 @router.get("/proxy")
 async def proxy_video(
     url: str = Query(..., description="The TikTok video URL to proxy"),
-    download: bool = Query(False, description="Force download with attachment header")
+    download: bool = Query(False, description="Force download with attachment header"),
+    cdn_url: str = Query(None, description="Direct TikTok CDN URL (preferred for reliable download)")
 ):
     """
     Proxy video with LRU caching for mobile optimization.
     OPTIMIZED: No server-side transcoding - client handles decoding.
     This reduces server CPU to ~0% during video playback.
     """
-    import yt_dlp
     import re
-    
-    # Check cache first
-    cached_path = get_cached_path(url)
+
+    # Check cache first (use cdn_url as cache key when provided so the
+    # full CDN copy is reused for both playback and download)
+    cache_key_url = cdn_url or url
+    cached_path = get_cached_path(cache_key_url)
     if cached_path:
         print(f"CACHE HIT: {url[:50]}...")
-        
+
         response_headers = {
             "Accept-Ranges": "bytes",
             "Cache-Control": "public, max-age=3600",
@@ -221,23 +223,53 @@ async def proxy_video(
             video_id_match = re.search(r'/video/(\d+)', url)
             video_id = video_id_match.group(1) if video_id_match else "tiktok_video"
             response_headers["Content-Disposition"] = f'attachment; filename="{video_id}.mp4"'
-        
+
         return FileResponse(
             cached_path,
             media_type="video/mp4",
             headers=response_headers
         )
-    
+
     print(f"CACHE MISS: {url[:50]}... (downloading)")
-    
+
     # Load stored credentials
     cookies, user_agent = PlaywrightManager.load_stored_credentials()
-    
-    # Create temp file for download
+
+    # Preferred path: download directly from the TikTok CDN URL provided by
+    # the feed. This bypasses the webpage/yt-dlp path which is often blocked
+    # by TikTok's WAF (returns a challenge page or 403).
+    if cdn_url:
+        try:
+            video_path = await download_cdn_video(cdn_url, cookies, user_agent)
+            cached_path = save_to_cache(cache_key_url, video_path)
+            os.unlink(video_path)
+            stats = get_cache_stats()
+            print(f"CACHED (CDN): {url[:50]}... ({stats['files']} files, {stats['size_mb']}MB total)")
+
+            response_headers = {
+                "Accept-Ranges": "bytes",
+                "Cache-Control": "public, max-age=3600",
+                "X-Video-Codec": "avc1",  # CDN playback URLs are H.264 MP4
+            }
+            if download:
+                video_id_match = re.search(r'/video/(\d+)', url)
+                video_id = video_id_match.group(1) if video_id_match else "tiktok_video"
+                response_headers["Content-Disposition"] = f'attachment; filename="{video_id}.mp4"'
+
+            return FileResponse(
+                cached_path,
+                media_type="video/mp4",
+                headers=response_headers
+            )
+        except Exception as e:
+            print(f"DEBUG: CDN download failed, falling back to yt-dlp: {e}")
+
+    # Fallback: yt-dlp with stored cookies + TLS impersonation
+    import yt_dlp
+
     temp_dir = tempfile.mkdtemp()
     output_template = os.path.join(temp_dir, "video.%(ext)s")
-    
-    # Create cookies file for yt-dlp
+
     cookie_file_path = None
     if cookies:
         cookie_file = tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False)
@@ -246,8 +278,7 @@ async def proxy_video(
             cookie_file.write(f".tiktok.com\tTRUE\t/\tFALSE\t0\t{c['name']}\t{c['value']}\n")
         cookie_file.close()
         cookie_file_path = cookie_file.name
-    
-    # Download best quality with H.264 video codec (browser compatible)
+
     ydl_opts = {
         'format': 'bestvideo[vcodec^=avc1][ext=mp4]+bestaudio[ext=m4a]/bestvideo[vcodec^=avc][ext=mp4]+bestaudio/best[ext=mp4][vcodec^=avc]/bestvideo[ext=mp4]+bestaudio/best',
         'outtmpl': output_template,
@@ -260,65 +291,109 @@ async def proxy_video(
             'Referer': 'https://www.tiktok.com/'
         }
     }
-    
     if cookie_file_path:
         ydl_opts['cookiefile'] = cookie_file_path
-    
+
+    # Use TLS impersonation to bypass TikTok's WAF (requires curl_cffi)
+    try:
+        from yt_dlp.networking.impersonate import ImpersonateTarget
+        ydl_opts['impersonate'] = ImpersonateTarget(client='safari', version=None)
+    except Exception as e:
+        print(f"DEBUG: curl_cffi impersonation unavailable: {e}")
+
     video_path = None
     video_codec = "unknown"
-    
+
     try:
         loop = asyncio.get_event_loop()
-        
+
         def download_video():
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 info = ydl.extract_info(url, download=True)
                 ext = info.get('ext', 'mp4')
                 vcodec = info.get('vcodec', 'unknown') or 'unknown'
                 return os.path.join(temp_dir, f"video.{ext}"), vcodec
-        
+
         video_path, video_codec = await loop.run_in_executor(None, download_video)
-        
+
         if not os.path.exists(video_path):
             raise Exception("Video file not created")
-        
+
         print(f"Downloaded codec: {video_codec}")
-        
-        # Save to cache directly - client-side player handles all formats
+
         cached_path = save_to_cache(url, video_path)
         stats = get_cache_stats()
         print(f"CACHED: {url[:50]}... ({stats['files']} files, {stats['size_mb']}MB total)")
-        
+
     except Exception as e:
         print(f"DEBUG: yt-dlp download failed: {e}")
-        # Cleanup
         if cookie_file_path and os.path.exists(cookie_file_path):
             os.unlink(cookie_file_path)
         if os.path.exists(temp_dir):
             shutil.rmtree(temp_dir, ignore_errors=True)
         raise HTTPException(status_code=500, detail=f"Could not download video: {e}")
-    
-    # Cleanup temp (cached file is separate)
+
     if cookie_file_path and os.path.exists(cookie_file_path):
         os.unlink(cookie_file_path)
     shutil.rmtree(temp_dir, ignore_errors=True)
-    
-    # Return from cache with codec info header
+
     response_headers = {
         "Accept-Ranges": "bytes",
         "Cache-Control": "public, max-age=3600",
-        "X-Video-Codec": video_codec,  # Let client know the codec
+        "X-Video-Codec": video_codec,
     }
     if download:
         video_id_match = re.search(r'/video/(\d+)', url)
         video_id = video_id_match.group(1) if video_id_match else "tiktok_video"
         response_headers["Content-Disposition"] = f'attachment; filename="{video_id}.mp4"'
-    
+
     return FileResponse(
         cached_path,
         media_type="video/mp4",
         headers=response_headers
     )
+
+
+async def download_cdn_video(cdn_url: str, cookies: list, user_agent: str) -> str:
+    """Download a video directly from the TikTok CDN URL to a temp file.
+
+    Returns the path to the downloaded file. The CDN playback URL is a
+    browser-playable MP4, so no transcoding or merging is required.
+    """
+    headers = {
+        "User-Agent": user_agent or PlaywrightManager.DEFAULT_USER_AGENT,
+        "Referer": "https://www.tiktok.com/",
+        "Accept": "*/*",
+        "Accept-Language": "en-US,en;q=0.9",
+        "Origin": "https://www.tiktok.com",
+    }
+    if cookies:
+        cookie_str = "; ".join([f"{c['name']}={c['value']}" for c in cookies])
+        headers["Cookie"] = cookie_str
+
+    temp_dir = tempfile.mkdtemp()
+    target = os.path.join(temp_dir, "video.mp4")
+
+    client = httpx.AsyncClient(timeout=120.0, follow_redirects=True)
+    try:
+        req = client.build_request("GET", cdn_url, headers=headers)
+        r = await client.send(req, stream=True)
+        r.raise_for_status()
+
+        content_type = r.headers.get("Content-Type", "")
+        if "json" in content_type:
+            raise Exception(f"CDN returned non-video content type: {content_type}")
+
+        with open(target, "wb") as f:
+            async for chunk in r.aiter_bytes(chunk_size=128 * 1024):
+                f.write(chunk)
+
+        if not os.path.exists(target) or os.path.getsize(target) == 0:
+            raise Exception("CDN download produced an empty file")
+    finally:
+        await client.aclose()
+
+    return target
 
 
 
